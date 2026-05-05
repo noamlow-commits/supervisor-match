@@ -1,0 +1,283 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>הרשמת מדריך — בית הספר לפסיכותרפיה</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Assistant:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#f7f5f0; --surface:#ffffff; --ink:#1f2937; --ink-soft:#4b5563; --muted:#6b7280;
+    --border:#e5e7eb; --line:#eef0ed; --accent:#5b8a72; --accent-soft:#e8efe9;
+    --accent-strong:#476e58;
+    --shadow: 0 1px 2px rgba(15,23,42,.04), 0 4px 14px rgba(15,23,42,.06);
+  }
+  *,*::before,*::after{box-sizing:border-box}
+  html,body{margin:0;padding:0}
+  body{
+    font-family:'Assistant',sans-serif;
+    background:var(--bg);color:var(--ink);
+    font-size:16px;line-height:1.5;-webkit-font-smoothing:antialiased;
+    min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px;
+  }
+  button{font-family:inherit;font-size:inherit;cursor:pointer;border:0;background:none}
+  input{font-family:inherit;font-size:inherit}
+
+  .card{
+    background:var(--surface);border-radius:18px;padding:32px 28px;
+    box-shadow:var(--shadow);max-width:440px;width:100%;
+  }
+  .icon-circle{
+    width:56px;height:56px;border-radius:16px;background:var(--accent-soft);
+    display:flex;align-items:center;justify-content:center;color:var(--accent);
+    font-size:26px;margin-bottom:18px;
+  }
+  h1{font-size:22px;margin:0 0 6px;font-weight:600}
+  .lead{margin:0 0 22px;color:var(--ink-soft);font-size:14.5px;line-height:1.55}
+
+  .field{margin-bottom:14px}
+  .field-label{display:block;font-size:13px;font-weight:600;margin-bottom:5px;color:var(--ink)}
+  .input{
+    width:100%;padding:12px 14px;font-size:15px;color:var(--ink);
+    background:var(--bg);border:1.5px solid transparent;border-radius:10px;outline:none;
+    transition:border-color .15s, background .15s;
+  }
+  .input:focus{border-color:var(--accent);background:var(--surface)}
+
+  .access-input{
+    width:100%;padding:14px;font-size:24px;text-align:center;letter-spacing:5px;
+    border:1.5px solid var(--border);border-radius:12px;background:var(--bg);
+    color:var(--ink);outline:none;text-transform:uppercase;font-weight:600;
+  }
+  .access-input:focus{border-color:var(--accent);background:var(--surface)}
+  .err{color:#b91c1c;font-size:13px;margin-top:8px;min-height:18px}
+
+  .btn{
+    width:100%;padding:14px;font-size:15.5px;font-weight:600;border-radius:12px;
+    cursor:pointer;transition:all .15s;text-align:center;background:var(--accent);
+    color:white;margin-top:8px;
+  }
+  .btn:hover{background:var(--accent-strong)}
+  .btn:disabled{background:var(--border);color:var(--muted);cursor:not-allowed}
+
+  .info{
+    background:var(--accent-soft);border-radius:12px;padding:14px 16px;
+    font-size:13.5px;color:var(--accent-strong);line-height:1.55;margin-bottom:18px;
+  }
+  .info b{font-weight:600}
+
+  .step-2{display:none}
+  .success-box{
+    background:#dcf3e7;border-radius:12px;padding:20px;text-align:center;margin-bottom:18px;
+  }
+  .success-box .check{font-size:36px;color:#0f8a5f;margin-bottom:6px}
+  .success-box h3{margin:0 0 6px;color:#0f8a5f;font-weight:600;font-size:16px}
+  .success-box p{margin:0;color:var(--ink-soft);font-size:13.5px}
+
+  .link-box{
+    background:var(--bg);border-radius:10px;padding:14px;font-size:13px;
+    word-break:break-all;font-family:monospace;direction:ltr;text-align:left;
+    color:var(--ink-soft);border:1px dashed var(--border);
+  }
+  .copy-btn{
+    background:var(--surface);border:1.5px solid var(--border);
+    padding:10px 16px;border-radius:10px;font-size:14px;color:var(--ink-soft);
+    margin-top:8px;width:100%;font-weight:500;
+  }
+  .copy-btn:hover{border-color:var(--accent);color:var(--accent)}
+</style>
+</head>
+<body>
+
+<!-- ===== Step 1: Access code ===== -->
+<div class="card" id="step1">
+  <div class="icon-circle">⌨</div>
+  <h1>הרשמת מדריך/ה חדש/ה</h1>
+  <p class="lead">לבית הספר לפסיכותרפיה. הזן/י את קוד ההזמנה שקיבלת מצוות בית הספר.</p>
+
+  <div class="info">
+    <b>טרם קיבלת קוד?</b> פנה/י לרכז/ת הלימודים — הקוד יישלח אליך במייל.
+  </div>
+
+  <div class="field">
+    <label class="field-label">קוד הזמנה למדריכים</label>
+    <input class="access-input" id="codeInput" maxlength="8" placeholder="ABCD" autocomplete="off">
+    <div class="err" id="codeErr"></div>
+  </div>
+
+  <button class="btn" id="codeNext">המשך</button>
+</div>
+
+<!-- ===== Step 2: Identify ===== -->
+<div class="card step-2" id="step2">
+  <div class="icon-circle">✎</div>
+  <h1>פרטים ראשונים</h1>
+  <p class="lead">רק שם ומייל בשלב זה. נשלח אליך לינק אישי לעריכת הפרופיל המלא.</p>
+
+  <div class="field">
+    <label class="field-label" for="regName">שם מלא</label>
+    <input class="input" id="regName" placeholder="ד״ר יעל כהן">
+  </div>
+
+  <div class="field">
+    <label class="field-label" for="regEmail">דואר אלקטרוני</label>
+    <input class="input" id="regEmail" type="email" placeholder="name@example.com">
+  </div>
+
+  <div class="err" id="regErr"></div>
+  <button class="btn" id="regSubmit">צור פרופיל</button>
+</div>
+
+<!-- ===== Step 3: Success ===== -->
+<div class="card step-2" id="step3">
+  <div class="success-box">
+    <div class="check">✓</div>
+    <h3>הפרופיל נוצר</h3>
+    <p>שלחנו אליך מייל עם הקישור האישי לעריכת הפרופיל.</p>
+  </div>
+
+  <p class="lead" style="margin-bottom:8px"><b>הקישור האישי שלך:</b></p>
+  <div class="link-box" id="personalLink">—</div>
+  <button class="copy-btn" id="copyLink">העתק קישור</button>
+
+  <div class="info" style="margin-top:18px">
+    <b>חשוב:</b> שמור/שמרי את הקישור הזה. הוא ישמש אותך לעריכת הפרופיל בכל זמן.
+  </div>
+
+  <button class="btn" id="goEdit">המשך לעריכת פרופיל</button>
+</div>
+
+<script>
+const REGISTRATION_CODE = 'CFGUSH26'; // demo only
+const APPS_SCRIPT_URL = localStorage.getItem('apps-script-url') || '';
+const LIVE = !!APPS_SCRIPT_URL;
+let supervisorToken = '';
+let registeredEmail = '';
+
+async function apiCall(action, params){
+  if(!LIVE) return null;
+  try{
+    const url = new URL(APPS_SCRIPT_URL);
+    url.searchParams.set('action', action);
+    for(const [k,v] of Object.entries(params||{})){
+      url.searchParams.set(k, v == null ? '' : v);
+    }
+    const r = await fetch(url.toString());
+    return await r.json();
+  }catch(e){ console.warn('API fail:', action, e); return null; }
+}
+
+function showStep(n){
+  document.getElementById('step1').style.display = n===1 ? 'block':'none';
+  document.getElementById('step2').style.display = n===2 ? 'block':'none';
+  document.getElementById('step3').style.display = n===3 ? 'block':'none';
+}
+
+function generateToken(){
+  const a = 'abcdefghjkmnpqrstuvwxyz23456789';
+  let t = '';
+  for(let i=0;i<14;i++) t += a[Math.floor(Math.random()*a.length)];
+  return t;
+}
+
+document.getElementById('codeNext').addEventListener('click', async ()=>{
+  const v = document.getElementById('codeInput').value.trim().toUpperCase();
+  let valid = false;
+  if(LIVE){
+    const r = await apiCall('verifyRegistrationCode', {code: v});
+    valid = r && r.valid;
+  } else {
+    valid = (v === REGISTRATION_CODE);
+  }
+  if(valid){
+    sessionStorage.setItem('reg-code', v);
+    showStep(2);
+    setTimeout(()=>document.getElementById('regName').focus(), 50);
+  } else {
+    document.getElementById('codeErr').textContent = 'קוד לא תקין. בדוק/בדקי שוב או פנה/י לרכז/ת.';
+  }
+});
+
+document.getElementById('codeInput').addEventListener('input', e=>{
+  document.getElementById('codeErr').textContent='';
+  e.target.value = e.target.value.toUpperCase();
+});
+
+document.getElementById('regSubmit').addEventListener('click', async ()=>{
+  const name = document.getElementById('regName').value.trim();
+  const email = document.getElementById('regEmail').value.trim();
+  const err = document.getElementById('regErr');
+  const btn = document.getElementById('regSubmit');
+
+  if(!name){ err.textContent='נא למלא שם מלא'; return; }
+  if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)){ err.textContent='כתובת מייל לא תקינה'; return; }
+
+  err.textContent = '';
+  btn.disabled = true; btn.textContent = 'יוצר פרופיל…';
+
+  let personalUrl;
+  if(LIVE){
+    const code = sessionStorage.getItem('reg-code') || '';
+    const r = await apiCall('registerSupervisor', {name, email, code});
+    if(r && r.token){
+      supervisorToken = r.token;
+      personalUrl = r.personalUrl || `${location.origin}${location.pathname.replace('register.html','supervisor.html')}?token=${r.token}`;
+    } else {
+      err.textContent = 'ההרשמה נכשלה. נסה/י שוב או פנה/י לרכז/ת.';
+      btn.disabled = false; btn.textContent = 'צור פרופיל';
+      return;
+    }
+  } else {
+    supervisorToken = generateToken();
+    personalUrl = `${location.origin}${location.pathname.replace('register.html','supervisor.html')}?token=${supervisorToken}`;
+    localStorage.setItem('supervisor-prefill', JSON.stringify({fullName:name, email}));
+  }
+
+  registeredEmail = email;
+  document.getElementById('personalLink').textContent = personalUrl;
+  localStorage.setItem('supervisor-token', supervisorToken);
+  showStep(3);
+});
+
+document.getElementById('copyLink').addEventListener('click', ()=>{
+  const text = document.getElementById('personalLink').textContent;
+  navigator.clipboard.writeText(text).then(()=>{
+    const b = document.getElementById('copyLink');
+    const old = b.textContent;
+    b.textContent = '✓ הועתק';
+    setTimeout(()=>b.textContent=old, 1500);
+  });
+});
+
+document.getElementById('goEdit').addEventListener('click', ()=>{
+  location.href = `supervisor.html?token=${supervisorToken}`;
+});
+
+// Auto-focus
+document.getElementById('codeInput').focus();
+
+// Settings cog (bottom-left small button, optional)
+const cog = document.createElement('button');
+cog.textContent = '⚙';
+cog.title = 'הגדרות backend';
+cog.style.cssText = 'position:fixed;bottom:14px;left:14px;width:32px;height:32px;border-radius:50%;background:#fff;box-shadow:0 1px 6px rgba(0,0,0,.1);font-size:14px;color:#999;opacity:.5;border:0;cursor:pointer';
+cog.addEventListener('click', ()=>{
+  const cur = localStorage.getItem('apps-script-url') || '';
+  const url = prompt('כתובת Apps Script (השאר/י ריק לדמו מקומי):', cur);
+  if(url === null) return;
+  if(url.trim()) localStorage.setItem('apps-script-url', url.trim());
+  else localStorage.removeItem('apps-script-url');
+  location.reload();
+});
+document.body.appendChild(cog);
+if(!LIVE){
+  const badge = document.createElement('span');
+  badge.textContent = 'מצב דמו';
+  badge.style.cssText = 'position:fixed;top:12px;left:12px;background:#fef3c7;color:#854d0e;font-size:11px;padding:3px 9px;border-radius:8px;font-weight:600;z-index:30';
+  document.body.appendChild(badge);
+}
+</script>
+</body>
+</html>

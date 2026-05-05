@@ -1,0 +1,705 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>מאגר מדריכי הדרכה — בית הספר לפסיכותרפיה</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Assistant:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#f7f5f0; --surface:#ffffff; --ink:#1f2937; --ink-soft:#4b5563; --muted:#6b7280;
+    --border:#e5e7eb; --line:#eef0ed; --accent:#5b8a72; --accent-soft:#e8efe9;
+    --available:#0f8a5f; --available-bg:#dcf3e7; --full:#9ca3af; --full-bg:#f3f4f6;
+    --tag:#eef2ee; --tag-ink:#3f5b48;
+    --whatsapp:#25d366; --phone:#3b82f6; --mail:#6b7280;
+    --shadow: 0 1px 2px rgba(15,23,42,.04), 0 4px 14px rgba(15,23,42,.06);
+  }
+  *,*::before,*::after{box-sizing:border-box}
+  html,body{margin:0;padding:0}
+  body{
+    font-family:'Assistant',sans-serif;
+    background:var(--bg);color:var(--ink);
+    font-size:16px;line-height:1.5;-webkit-font-smoothing:antialiased;
+    min-height:100vh;
+  }
+  button{font-family:inherit;font-size:inherit;cursor:pointer;border:0;background:none}
+  input,select,textarea{font-family:inherit;font-size:inherit}
+
+  /* ========== PIN Gate ========== */
+  .pin-gate{
+    position:fixed;inset:0;z-index:100;background:var(--bg);
+    display:flex;align-items:center;justify-content:center;padding:24px;
+  }
+  .pin-card{
+    background:var(--surface);border-radius:18px;padding:32px 28px;
+    box-shadow:var(--shadow);max-width:360px;width:100%;text-align:center;
+  }
+  .pin-card h1{font-size:20px;margin:0 0 8px;font-weight:600}
+  .pin-card p{margin:0 0 20px;color:var(--ink-soft);font-size:14px}
+  .pin-input{
+    width:100%;padding:14px;font-size:24px;text-align:center;letter-spacing:6px;
+    border:1.5px solid var(--border);border-radius:12px;background:var(--bg);
+    color:var(--ink);outline:none;
+  }
+  .pin-input:focus{border-color:var(--accent);background:var(--surface)}
+  .pin-error{color:#b91c1c;font-size:13px;margin-top:10px;min-height:18px}
+
+  /* ========== Header ========== */
+  .header{
+    background:var(--surface);border-bottom:1px solid var(--border);
+    padding:14px 16px;position:sticky;top:0;z-index:20;
+  }
+  .header-inner{max-width:1100px;margin:0 auto;display:flex;align-items:center;gap:12px}
+  .header h1{font-size:17px;margin:0;font-weight:600;color:var(--ink)}
+  .header .sub{font-size:12px;color:var(--muted);margin:0}
+  .header .icon{
+    width:36px;height:36px;border-radius:10px;background:var(--accent-soft);
+    display:flex;align-items:center;justify-content:center;color:var(--accent);
+    font-size:18px;flex-shrink:0;
+  }
+  .count-badge{
+    margin-inline-start:auto;font-size:13px;color:var(--muted);
+    background:var(--bg);padding:4px 10px;border-radius:10px;
+  }
+
+  /* ========== Filters ========== */
+  .filter-bar{
+    background:var(--surface);border-bottom:1px solid var(--border);
+    padding:0 16px;position:sticky;top:65px;z-index:19;
+  }
+  .filter-bar-inner{max-width:1100px;margin:0 auto}
+  .filter-toggle{
+    display:flex;align-items:center;gap:10px;padding:12px 0;
+    color:var(--ink-soft);font-size:14px;font-weight:500;width:100%;text-align:right;
+  }
+  .filter-toggle .chev{transition:transform .2s;font-size:12px}
+  .filter-toggle.open .chev{transform:rotate(180deg)}
+  .filter-active-count{
+    background:var(--accent);color:white;font-size:11px;padding:2px 8px;
+    border-radius:10px;font-weight:600;
+  }
+  .filter-clear{
+    margin-inline-start:auto;color:var(--muted);font-size:13px;
+    text-decoration:underline;
+  }
+  .filter-panel{display:none;padding-bottom:14px}
+  .filter-panel.open{display:block}
+  .filter-group{margin-bottom:14px}
+  .filter-group-label{
+    font-size:12px;color:var(--muted);font-weight:600;
+    margin-bottom:6px;text-transform:none;
+  }
+  .chip-row{display:flex;flex-wrap:wrap;gap:6px}
+  .chip{
+    padding:6px 12px;border-radius:999px;font-size:13px;
+    background:var(--bg);color:var(--ink-soft);border:1px solid transparent;
+    transition:all .15s;
+  }
+  .chip:hover{border-color:var(--border)}
+  .chip.active{background:var(--accent-soft);color:var(--accent);border-color:var(--accent);font-weight:600}
+
+  /* ========== Card Grid ========== */
+  .grid{
+    max-width:1100px;margin:0 auto;padding:16px;
+    display:grid;grid-template-columns:1fr;gap:12px;
+  }
+  @media(min-width:640px){.grid{grid-template-columns:1fr 1fr;gap:14px;padding:20px}}
+  @media(min-width:1024px){.grid{grid-template-columns:1fr 1fr 1fr;gap:16px}}
+
+  .card{
+    background:var(--surface);border-radius:16px;padding:18px;
+    box-shadow:var(--shadow);cursor:pointer;
+    transition:transform .15s, box-shadow .15s;
+    border:1px solid transparent;
+  }
+  .card:hover{transform:translateY(-2px);box-shadow:0 4px 18px rgba(15,23,42,.08)}
+  .card.full{opacity:.62}
+  .card-head{display:flex;align-items:flex-start;gap:10px;margin-bottom:10px}
+  .card-head .name{flex:1;min-width:0}
+  .card .name h2{font-size:17px;margin:0 0 2px;font-weight:600;line-height:1.25}
+  .card .credential{font-size:13px;color:var(--muted);margin:0}
+  .pill{
+    flex-shrink:0;font-size:11px;padding:3px 9px;border-radius:999px;font-weight:600;
+    white-space:nowrap;
+  }
+  .pill.available{background:var(--available-bg);color:var(--available)}
+  .pill.full{background:var(--full-bg);color:var(--full)}
+
+  .card-meta{
+    display:flex;flex-wrap:wrap;gap:6px 10px;font-size:12px;color:var(--muted);
+    margin:8px 0 12px;
+  }
+  .card-meta span::before{content:"·";margin-inline-end:8px}
+  .card-meta span:first-child::before{content:""}
+
+  .tags{display:flex;flex-wrap:wrap;gap:5px;margin-bottom:10px}
+  .tag{
+    font-size:11.5px;padding:3px 9px;border-radius:6px;
+    background:var(--tag);color:var(--tag-ink);font-weight:500;
+  }
+  .tag.pop{background:#eef0f7;color:#3a4a6e}
+
+  .card-style{
+    font-size:13px;color:var(--ink-soft);line-height:1.5;
+    display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;
+    overflow:hidden;border-top:1px solid var(--line);padding-top:10px;
+  }
+
+  /* ========== Detail Modal ========== */
+  .modal-backdrop{
+    position:fixed;inset:0;background:rgba(15,23,42,.55);z-index:50;
+    display:none;align-items:flex-end;justify-content:center;
+  }
+  @media(min-width:640px){.modal-backdrop{align-items:center;padding:24px}}
+  .modal-backdrop.open{display:flex;animation:fadein .2s}
+  @keyframes fadein{from{opacity:0}to{opacity:1}}
+  .modal{
+    background:var(--surface);width:100%;max-width:560px;max-height:92vh;
+    overflow-y:auto;border-radius:20px 20px 0 0;
+    animation:slideup .25s ease-out;
+  }
+  @media(min-width:640px){.modal{border-radius:18px;animation:popin .2s}}
+  @keyframes slideup{from{transform:translateY(40px);opacity:.5}to{transform:none;opacity:1}}
+  @keyframes popin{from{transform:scale(.95);opacity:0}to{transform:none;opacity:1}}
+
+  .modal-handle{
+    width:40px;height:4px;background:var(--border);border-radius:4px;
+    margin:8px auto 0;
+  }
+  @media(min-width:640px){.modal-handle{display:none}}
+  .modal-body{padding:18px 22px 24px}
+  .modal-close{
+    position:absolute;top:12px;left:12px;
+    width:36px;height:36px;border-radius:50%;background:rgba(255,255,255,.85);
+    backdrop-filter:blur(8px);font-size:20px;line-height:1;color:var(--ink-soft);
+    box-shadow:0 1px 4px rgba(0,0,0,.06);
+  }
+  .modal-head{margin-bottom:16px}
+  .modal-head h2{font-size:22px;margin:0 0 4px;font-weight:600}
+  .modal-head .credential{color:var(--muted);font-size:14px;margin:0 0 8px}
+  .modal-head .meta-line{font-size:13px;color:var(--ink-soft)}
+
+  .field{margin:14px 0}
+  .field-label{
+    font-size:12px;color:var(--muted);font-weight:600;
+    margin-bottom:5px;
+  }
+  .field-value{font-size:15px;color:var(--ink);line-height:1.55}
+  .style-text{
+    background:var(--bg);padding:14px 16px;border-radius:12px;
+    font-size:14.5px;line-height:1.65;color:var(--ink-soft);font-style:italic;
+    border-inline-start:3px solid var(--accent);
+  }
+  .availability-grid{
+    display:grid;grid-template-columns:auto repeat(7,1fr);gap:3px;font-size:12px;
+    margin-top:6px;
+  }
+  .availability-grid .lbl{color:var(--muted);font-size:11px;padding:4px 0}
+  .availability-grid .day-h{text-align:center;font-weight:600;color:var(--ink-soft);padding:4px 0}
+  .availability-grid .cell{
+    background:var(--bg);border-radius:6px;height:28px;
+    display:flex;align-items:center;justify-content:center;
+  }
+  .availability-grid .cell.on{background:var(--accent-soft);color:var(--accent);font-weight:600}
+  .availability-grid .cell.on::after{content:"✓"}
+
+  .contact-row{
+    display:flex;flex-direction:column;gap:8px;margin-top:18px;
+    padding-top:16px;border-top:1px solid var(--line);
+  }
+  .btn-contact{
+    display:flex;align-items:center;gap:10px;padding:14px 16px;
+    border-radius:12px;font-size:15px;font-weight:600;color:white;
+    text-decoration:none;justify-content:center;
+  }
+  .btn-contact .ic{font-size:18px}
+  .btn-wa{background:var(--whatsapp)}
+  .btn-wa:hover{background:#1eb558}
+  .btn-tel{background:var(--phone)}
+  .btn-tel:hover{background:#2563eb}
+  .btn-mail{background:#475569}
+  .btn-mail:hover{background:#334155}
+
+  .empty{
+    text-align:center;padding:60px 20px;color:var(--muted);
+  }
+  .empty .em-icon{font-size:36px;margin-bottom:12px;opacity:.6}
+  .empty h3{margin:0 0 4px;color:var(--ink-soft);font-weight:600}
+
+  /* Settings cog & demo badge */
+  .settings-cog{
+    position:fixed;bottom:18px;left:18px;z-index:30;
+    width:36px;height:36px;border-radius:50%;background:var(--surface);
+    box-shadow:var(--shadow);font-size:16px;color:var(--muted);
+    opacity:.6;transition:opacity .15s;
+  }
+  .settings-cog:hover{opacity:1}
+  .demo-badge{
+    background:#fef3c7;color:#854d0e;font-size:11px;padding:3px 9px;border-radius:8px;
+    font-weight:600;margin-inline-start:6px;
+  }
+</style>
+</head>
+<body>
+
+<!-- ===== PIN Gate ===== -->
+<div class="pin-gate" id="pinGate">
+  <div class="pin-card">
+    <h1>מאגר מדריכי הדרכה</h1>
+    <p>הזן/י קוד גישה כיתתי</p>
+    <input type="password" inputmode="numeric" maxlength="6" class="pin-input" id="pinInput" autocomplete="off">
+    <div class="pin-error" id="pinError"></div>
+  </div>
+</div>
+
+<!-- ===== Header ===== -->
+<header class="header">
+  <div class="header-inner">
+    <div class="icon">◆</div>
+    <div>
+      <h1>מאגר מדריכי הדרכה <span class="demo-badge" id="demoBadge" style="display:none">דמו</span></h1>
+      <p class="sub">בית הספר לפסיכותרפיה · עונה 2026</p>
+    </div>
+    <div class="count-badge" id="countBadge">— מדריכים</div>
+  </div>
+</header>
+
+<button class="settings-cog" id="settingsCog" title="הגדרות backend">⚙</button>
+
+<!-- ===== Filters ===== -->
+<div class="filter-bar">
+  <div class="filter-bar-inner">
+    <button class="filter-toggle" id="filterToggle">
+      <span>סינון</span>
+      <span class="filter-active-count" id="filterCount" style="display:none">0</span>
+      <span class="chev">▼</span>
+      <span class="filter-clear" id="filterClear" style="display:none">נקה הכל</span>
+    </button>
+    <div class="filter-panel" id="filterPanel">
+      <div class="filter-group">
+        <div class="filter-group-label">אוריינטציה</div>
+        <div class="chip-row" data-filter="orientations"></div>
+      </div>
+      <div class="filter-group">
+        <div class="filter-group-label">אוכלוסייה</div>
+        <div class="chip-row" data-filter="populations"></div>
+      </div>
+      <div class="filter-group">
+        <div class="filter-group-label">תחום התמחות</div>
+        <div class="chip-row" data-filter="specialties"></div>
+      </div>
+      <div class="filter-group">
+        <div class="filter-group-label">פורמט</div>
+        <div class="chip-row" data-filter="format"></div>
+      </div>
+      <div class="filter-group">
+        <div class="filter-group-label">אזור</div>
+        <div class="chip-row" data-filter="area"></div>
+      </div>
+      <div class="filter-group">
+        <div class="filter-group-label">זמינות</div>
+        <div class="chip-row" data-filter="hasSpot"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ===== Grid ===== -->
+<main class="grid" id="grid"></main>
+
+<!-- ===== Detail Modal ===== -->
+<div class="modal-backdrop" id="modal">
+  <div class="modal" onclick="event.stopPropagation()">
+    <div class="modal-handle"></div>
+    <button class="modal-close" id="modalClose">×</button>
+    <div class="modal-body" id="modalBody"></div>
+  </div>
+</div>
+
+<script>
+/* ===== Config ===== */
+const CLASS_PIN = '2026'; // changeable in production via Apps Script settings
+
+/* ===== Parameter Lists (loaded from Sheet's Parameters tab when wired) ===== */
+let PARAMS = {
+  orientations: ['פסיכודינמי','CBT','EFT','גשטאלט','נרטיבי','אינטגרטיבי','יחסי-אובייקט','מערכתי-משפחתי','JPT'],
+  populations: ['מבוגרים','נוער','ילדים','זוגות','משפחות'],
+  specialties: ['טראומה','חרדה ודיכאון','אובדן ושכול','הפרעות אכילה','התמכרויות','מיניות','פסיכוזה','ASD','רגישות דתית/חרדית','רב-תרבותי'],
+  formats: ['פרונטלי','מקוון','היברידי'],
+  areas: ['ירושלים','גוש עציון','מרכז','שפלה','צפון','דרום','שרון'],
+  days: ['א','ב','ג','ד','ה','ו'],
+  timeOfDay: ['בוקר','צהריים','ערב']
+};
+
+/* ===== Mock Supervisors (replaced by Apps Script data when wired) ===== */
+let SUPERVISORS = [
+  {
+    id:'s1', fullName:'ד"ר יעל כהן', credential:'פסיכולוגית קלינית מומחית, MA',
+    yearsSupervising:14,
+    orientations:['פסיכודינמי','יחסי-אובייקט'],
+    populations:['מבוגרים','זוגות'],
+    specialties:['טראומה','אובדן ושכול'],
+    format:'היברידי', area:'ירושלים',
+    availability:{'א':['בוקר','ערב'],'ג':['ערב'],'ה':['בוקר']},
+    hasSpot:true,
+    styleText:'אני מאמינה שהדרכה טובה היא מרחב משותף לחקירה. אעודד אותך להביא רגעים שמטרידים אותך, גם כאלה שאת/ה לא בטוח/ה איך לנסח, ונעבוד עליהם יחד מתוך סקרנות ולא שיפוטיות.',
+    contact:{phone:'0501234567', whatsappEnabled:true, email:'yael.cohen@example.com'}
+  },
+  {
+    id:'s2', fullName:'אבי לוי', credential:'עו״ס קליני, מטפל מוסמך CBT',
+    yearsSupervising:8,
+    orientations:['CBT','אינטגרטיבי'],
+    populations:['מבוגרים','נוער'],
+    specialties:['חרדה ודיכאון','התמכרויות'],
+    format:'מקוון', area:'',
+    availability:{'ב':['ערב'],'ד':['ערב'],'ה':['צהריים','ערב']},
+    hasSpot:true,
+    styleText:'הדרכה אצלי מאוד פרקטית — אנחנו לוקחים מקרה, מפרקים אותו, ובונים אסטרטגיית התערבות מבוססת ראיות. שילוב של למידה ממוקדת ועיבוד אישי של מה שעולה אצלך כמטפל.',
+    contact:{phone:'0507654321', whatsappEnabled:true, email:'avi.levi@example.com'}
+  },
+  {
+    id:'s3', fullName:'ד"ר שרה אברמוביץ', credential:'פסיכולוגית קלינית בכירה',
+    yearsSupervising:22,
+    orientations:['פסיכודינמי','JPT'],
+    populations:['מבוגרים'],
+    specialties:['טראומה','מיניות'],
+    format:'פרונטלי', area:'מרכז',
+    availability:{'ג':['בוקר','צהריים'],'ד':['בוקר']},
+    hasSpot:false,
+    styleText:'אני מתעניינת במה שמתרחש ביניכם בחדר — בהעברה ובהעברה הנגדית. הדרכה היא מקום ללמוד על עצמך כמטפל דרך מה שהמטופל מעורר בך.',
+    contact:{phone:'036123456', whatsappEnabled:false, email:'sara.a@example.com'}
+  },
+  {
+    id:'s4', fullName:'משה רוזנברג', credential:'פסיכותרפיסט, MSc',
+    yearsSupervising:6,
+    orientations:['גשטאלט','אינטגרטיבי'],
+    populations:['מבוגרים','נוער','זוגות'],
+    specialties:['חרדה ודיכאון','רגישות דתית/חרדית'],
+    format:'היברידי', area:'גוש עציון',
+    availability:{'א':['ערב'],'ג':['ערב'],'ה':['צהריים','ערב']},
+    hasSpot:true,
+    styleText:'בהדרכה אצלי נשלב חוויה גופנית, רגשית והתבוננות. אני מאמין שהמטפל הוא הכלי, ולכן נעבוד גם על מה שקורה בך תוך כדי הטיפול ולא רק על המטופל.',
+    contact:{phone:'0521122334', whatsappEnabled:true, email:'moshe.r@example.com'}
+  },
+  {
+    id:'s5', fullName:'ד"ר רותי בן-עמי', credential:'פסיכולוגית קלינית מומחית, ילדים ונוער',
+    yearsSupervising:16,
+    orientations:['פסיכודינמי','EFT'],
+    populations:['ילדים','נוער','משפחות'],
+    specialties:['טראומה','ASD','אובדן ושכול'],
+    format:'פרונטלי', area:'שרון',
+    availability:{'ב':['בוקר','צהריים'],'ד':['בוקר','צהריים']},
+    hasSpot:true,
+    styleText:'הדרכה בעבודה עם ילדים מצריכה הקשבה גם להורים, גם לילד וגם למה שאת/ה מרגיש/ה כמטפל/ת. נעבוד מתוך תיאוריה התפתחותית, אבל גם מתוך אינטואיציה קלינית.',
+    contact:{phone:'0509988776', whatsappEnabled:true, email:'ruti.b@example.com'}
+  },
+  {
+    id:'s6', fullName:'דניאל שטרן', credential:'מטפל זוגי ומשפחתי מוסמך',
+    yearsSupervising:11,
+    orientations:['EFT','מערכתי-משפחתי','נרטיבי'],
+    populations:['זוגות','משפחות'],
+    specialties:['התמכרויות','רב-תרבותי'],
+    format:'מקוון', area:'',
+    availability:{'א':['בוקר'],'ב':['ערב'],'ה':['ערב']},
+    hasSpot:false,
+    styleText:'אני עובד עם הדרכה כעם פסיפס מערכתי — מי המטופלים בחדר, מי המטפל, מה אנחנו לא רואים. נתמקד בדפוסים החוזרים, גם של הזוג וגם שלך מולם.',
+    contact:{phone:'0533344556', whatsappEnabled:true, email:'daniel.s@example.com'}
+  },
+  {
+    id:'s7', fullName:'ד"ר חנה גרין', credential:'פסיכולוגית קלינית, מטפלת CBT-T',
+    yearsSupervising:9,
+    orientations:['CBT','אינטגרטיבי'],
+    populations:['מבוגרים','נוער'],
+    specialties:['הפרעות אכילה','חרדה ודיכאון','טראומה'],
+    format:'היברידי', area:'מרכז',
+    availability:{'ג':['בוקר','צהריים'],'ד':['ערב']},
+    hasSpot:true,
+    styleText:'התמחות בעבודה עם הפרעות אכילה דורשת ידע ספציפי, אבל גם רגישות עמוקה לבושה ושליטה. בהדרכה אנסה לעזור לך לאזן בין פרוטוקול לבין הקשר עם המטופל.',
+    contact:{phone:'0541112233', whatsappEnabled:true, email:'hana.green@example.com'}
+  },
+  {
+    id:'s8', fullName:'יוסף ברנשטיין', credential:'פסיכותרפיסט בכיר, מומחה בטראומה',
+    yearsSupervising:25,
+    orientations:['פסיכודינמי','יחסי-אובייקט','EFT'],
+    populations:['מבוגרים'],
+    specialties:['טראומה','פסיכוזה','אובדן ושכול'],
+    format:'פרונטלי', area:'ירושלים',
+    availability:{'ב':['בוקר'],'ד':['בוקר','צהריים']},
+    hasSpot:true,
+    styleText:'אחרי הרבה שנים של עבודה עם טראומה, אני יודע שמה שעוזר זה לא רק הטכניקה אלא היציבות של המטפל. ההדרכה היא מקום שבו אתה יכול להישבר בלי לאבד את הקרקע.',
+    contact:{phone:'0508887766', whatsappEnabled:false, email:'yosef.b@example.com'}
+  }
+];
+
+/* ===== State ===== */
+let activeFilters = {
+  orientations:new Set(), populations:new Set(), specialties:new Set(),
+  format:new Set(), area:new Set(), hasSpot:new Set()
+};
+
+/* ===== Backend API ===== */
+const APPS_SCRIPT_URL = localStorage.getItem('apps-script-url') || '';
+const LIVE = !!APPS_SCRIPT_URL;
+
+async function apiCall(action, params){
+  if(!LIVE) return null;
+  try{
+    const url = new URL(APPS_SCRIPT_URL);
+    url.searchParams.set('action', action);
+    for(const [k,v] of Object.entries(params||{})){
+      url.searchParams.set(k, v == null ? '' : (typeof v === 'object' ? JSON.stringify(v) : v));
+    }
+    const r = await fetch(url.toString());
+    return await r.json();
+  }catch(e){ console.warn('API fail:', action, e); return null; }
+}
+
+/* ===== PIN gate ===== */
+async function verifyPin(pin){
+  if(LIVE){
+    const r = await apiCall('verifyClassPin', {pin});
+    return r && r.valid;
+  }
+  return pin === CLASS_PIN;
+}
+
+async function checkPin(){
+  const stored = localStorage.getItem('supervisor-match-pin');
+  if(stored && await verifyPin(stored)){
+    document.getElementById('pinGate').style.display='none';
+    init();
+    return;
+  }
+  document.getElementById('pinInput').focus();
+}
+
+document.getElementById('pinInput').addEventListener('input', async e=>{
+  const v = e.target.value;
+  if(v.length >= 4 && /^\d+$/.test(v)){
+    if(await verifyPin(v)){
+      localStorage.setItem('supervisor-match-pin', v);
+      document.getElementById('pinGate').style.display='none';
+      init();
+    } else if(v.length >= 6) {
+      document.getElementById('pinError').textContent = 'קוד שגוי';
+      e.target.value = '';
+      setTimeout(()=>document.getElementById('pinError').textContent='',1500);
+    }
+  }
+});
+
+/* ===== Init ===== */
+async function init(){
+  if(LIVE){
+    const pin = localStorage.getItem('supervisor-match-pin');
+    const [sup, par] = await Promise.all([
+      apiCall('getSupervisors', {pin}),
+      apiCall('getParameters', {pin})
+    ]);
+    if(sup && sup.supervisors) SUPERVISORS = sup.supervisors;
+    if(par && par.parameters){
+      // backend returns: orientations, populations, specialties, formats, areas
+      // days/timeOfDay stay client-side
+      ['orientations','populations','specialties','formats','areas'].forEach(k=>{
+        if(par.parameters[k]) PARAMS[k] = par.parameters[k];
+      });
+    }
+  }
+  buildFilters();
+  render();
+  document.getElementById('filterToggle').addEventListener('click', toggleFilter);
+  document.getElementById('modal').addEventListener('click', closeModal);
+  document.getElementById('modalClose').addEventListener('click', closeModal);
+}
+
+function buildFilters(){
+  const groups = {
+    orientations: PARAMS.orientations,
+    populations: PARAMS.populations,
+    specialties: PARAMS.specialties,
+    format: PARAMS.formats,
+    area: PARAMS.areas,
+    hasSpot: ['יש מקום פנוי']
+  };
+  for(const [key, items] of Object.entries(groups)){
+    const row = document.querySelector(`[data-filter="${key}"]`);
+    items.forEach(item=>{
+      const chip = document.createElement('button');
+      chip.className = 'chip';
+      chip.textContent = item;
+      chip.addEventListener('click', ()=>{
+        const val = key === 'hasSpot' ? 'true' : item;
+        if(activeFilters[key].has(val)) activeFilters[key].delete(val);
+        else activeFilters[key].add(val);
+        chip.classList.toggle('active');
+        render();
+      });
+      row.appendChild(chip);
+    });
+  }
+  document.getElementById('filterClear').addEventListener('click',e=>{
+    e.stopPropagation();
+    Object.values(activeFilters).forEach(s=>s.clear());
+    document.querySelectorAll('.chip.active').forEach(c=>c.classList.remove('active'));
+    render();
+  });
+}
+
+function toggleFilter(){
+  const panel = document.getElementById('filterPanel');
+  const btn = document.getElementById('filterToggle');
+  panel.classList.toggle('open');
+  btn.classList.toggle('open');
+}
+
+function matchesFilters(s){
+  const f = activeFilters;
+  if(f.orientations.size && !s.orientations.some(o=>f.orientations.has(o))) return false;
+  if(f.populations.size && !s.populations.some(p=>f.populations.has(p))) return false;
+  if(f.specialties.size && !s.specialties.some(sp=>f.specialties.has(sp))) return false;
+  if(f.format.size && !f.format.has(s.format)) return false;
+  if(f.area.size && !(s.area && f.area.has(s.area))) return false;
+  if(f.hasSpot.size && !s.hasSpot) return false;
+  return true;
+}
+
+function render(){
+  const filtered = SUPERVISORS.filter(matchesFilters);
+  const grid = document.getElementById('grid');
+  document.getElementById('countBadge').textContent = `${filtered.length} מדריכים`;
+
+  const totalActive = Object.values(activeFilters).reduce((sum,s)=>sum+s.size,0);
+  const fc = document.getElementById('filterCount');
+  const fcl = document.getElementById('filterClear');
+  if(totalActive > 0){
+    fc.textContent = totalActive; fc.style.display='inline-block';
+    fcl.style.display='inline';
+  } else { fc.style.display='none'; fcl.style.display='none'; }
+
+  if(filtered.length === 0){
+    grid.innerHTML = `<div class="empty" style="grid-column:1/-1">
+      <div class="em-icon">⚲</div>
+      <h3>לא נמצאו מדריכים מתאימים</h3>
+      <p>נסה לבטל חלק מהסינון</p>
+    </div>`;
+    return;
+  }
+
+  grid.innerHTML = '';
+  filtered.forEach(s=>{
+    const card = document.createElement('div');
+    card.className = 'card' + (s.hasSpot ? '' : ' full');
+    card.innerHTML = `
+      <div class="card-head">
+        <div class="name">
+          <h2>${s.fullName}</h2>
+          <p class="credential">${s.credential}</p>
+        </div>
+        <span class="pill ${s.hasSpot?'available':'full'}">${s.hasSpot?'יש מקום':'אין מקום'}</span>
+      </div>
+      <div class="card-meta">
+        <span>${s.format}${s.area ? ' · ' + s.area : ''}</span>
+        <span>${s.yearsSupervising} שנות הדרכה</span>
+      </div>
+      <div class="tags">
+        ${s.orientations.slice(0,3).map(o=>`<span class="tag">${o}</span>`).join('')}
+        ${s.populations.slice(0,2).map(p=>`<span class="tag pop">${p}</span>`).join('')}
+      </div>
+      <div class="card-style">${s.styleText}</div>
+    `;
+    card.addEventListener('click', ()=>openModal(s));
+    grid.appendChild(card);
+  });
+}
+
+/* ===== Modal ===== */
+function openModal(s){
+  const body = document.getElementById('modalBody');
+  const days = PARAMS.days;
+  const slots = PARAMS.timeOfDay;
+
+  // Build availability grid
+  let availHTML = `<div class="availability-grid">
+    <div class="lbl"></div>
+    ${days.map(d=>`<div class="day-h">${d}</div>`).join('')}`;
+  slots.forEach(slot=>{
+    availHTML += `<div class="lbl">${slot}</div>`;
+    days.forEach(d=>{
+      const on = s.availability[d] && s.availability[d].includes(slot);
+      availHTML += `<div class="cell${on?' on':''}"></div>`;
+    });
+  });
+  availHTML += `</div>`;
+
+  // Contact buttons (only for filled channels)
+  const waNum = s.contact.phone ? s.contact.phone.replace(/\D/g,'').replace(/^0/,'972') : '';
+  const msg = encodeURIComponent(`שלום ${s.fullName}, אני תלמיד/ה בבית הספר לפסיכותרפיה. ראיתי את הפרופיל שלך במאגר וברצוני לבדוק אפשרות להדרכה.`);
+  let contactHTML = `<div class="contact-row">`;
+  if(s.contact.phone && s.contact.whatsappEnabled) contactHTML += `<a class="btn-contact btn-wa" href="https://wa.me/${waNum}?text=${msg}" target="_blank"><span class="ic">✦</span> פנייה ב-WhatsApp</a>`;
+  if(s.contact.phone) contactHTML += `<a class="btn-contact btn-tel" href="tel:${s.contact.phone}"><span class="ic">☎</span> חיוג: ${s.contact.phone}</a>`;
+  if(s.contact.email) contactHTML += `<a class="btn-contact btn-mail" href="mailto:${s.contact.email}?subject=${encodeURIComponent('פנייה דרך מאגר ההדרכה')}"><span class="ic">✉</span> שליחת מייל</a>`;
+  contactHTML += `</div>`;
+
+  body.innerHTML = `
+    <div class="modal-head">
+      <h2>${s.fullName}</h2>
+      <p class="credential">${s.credential}</p>
+      <div class="meta-line">${s.yearsSupervising} שנות הדרכה · ${s.format}${s.area?' · '+s.area:''} · <span class="pill ${s.hasSpot?'available':'full'}" style="font-size:11px">${s.hasSpot?'יש מקום':'אין מקום'}</span></div>
+    </div>
+
+    <div class="field">
+      <div class="field-label">על הסגנון שלי</div>
+      <div class="style-text">${s.styleText}</div>
+    </div>
+
+    <div class="field">
+      <div class="field-label">אוריינטציה תיאורטית</div>
+      <div class="tags">${s.orientations.map(o=>`<span class="tag">${o}</span>`).join('')}</div>
+    </div>
+
+    <div class="field">
+      <div class="field-label">אוכלוסיות</div>
+      <div class="tags">${s.populations.map(p=>`<span class="tag pop">${p}</span>`).join('')}</div>
+    </div>
+
+    <div class="field">
+      <div class="field-label">תחומי התמחות</div>
+      <div class="tags">${s.specialties.map(sp=>`<span class="tag">${sp}</span>`).join('')}</div>
+    </div>
+
+    <div class="field">
+      <div class="field-label">זמינות שבועית</div>
+      ${availHTML}
+    </div>
+
+    ${contactHTML}
+  `;
+
+  document.getElementById('modal').classList.add('open');
+  document.body.style.overflow='hidden';
+}
+
+function closeModal(){
+  document.getElementById('modal').classList.remove('open');
+  document.body.style.overflow='';
+}
+
+/* Settings cog */
+document.getElementById('settingsCog').addEventListener('click', ()=>{
+  const cur = localStorage.getItem('apps-script-url') || '';
+  const url = prompt('כתובת Apps Script (השאר/י ריק לדמו מקומי):', cur);
+  if(url === null) return;
+  if(url.trim()) localStorage.setItem('apps-script-url', url.trim());
+  else localStorage.removeItem('apps-script-url');
+  localStorage.removeItem('supervisor-match-pin');
+  location.reload();
+});
+if(!LIVE) document.getElementById('demoBadge').style.display='inline-block';
+
+/* Boot */
+checkPin();
+</script>
+</body>
+</html>

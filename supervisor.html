@@ -1,0 +1,680 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>עריכת פרופיל מדריך</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Assistant:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#f7f5f0; --surface:#ffffff; --ink:#1f2937; --ink-soft:#4b5563; --muted:#6b7280;
+    --border:#e5e7eb; --line:#eef0ed; --accent:#5b8a72; --accent-soft:#e8efe9;
+    --accent-strong:#476e58;
+    --error:#b91c1c; --error-soft:#fee2e2;
+    --success:#0f8a5f; --success-soft:#dcf3e7;
+    --shadow: 0 1px 2px rgba(15,23,42,.04), 0 4px 14px rgba(15,23,42,.06);
+  }
+  *,*::before,*::after{box-sizing:border-box}
+  html,body{margin:0;padding:0}
+  body{
+    font-family:'Assistant',sans-serif;
+    background:var(--bg);color:var(--ink);
+    font-size:16px;line-height:1.5;-webkit-font-smoothing:antialiased;
+    min-height:100vh;
+  }
+  button{font-family:inherit;font-size:inherit;cursor:pointer;border:0;background:none}
+  input,select,textarea{font-family:inherit;font-size:inherit}
+
+  .container{max-width:680px;margin:0 auto;padding:16px}
+  @media(min-width:640px){.container{padding:32px 24px}}
+
+  /* ===== Header ===== */
+  .page-head{
+    background:var(--surface);border-radius:16px;padding:20px 22px;
+    box-shadow:var(--shadow);margin-bottom:14px;
+    display:flex;align-items:center;gap:14px;
+  }
+  .page-head .icon{
+    width:44px;height:44px;border-radius:12px;background:var(--accent-soft);
+    display:flex;align-items:center;justify-content:center;color:var(--accent);
+    font-size:22px;flex-shrink:0;
+  }
+  .page-head h1{font-size:18px;margin:0 0 2px;font-weight:600}
+  .page-head p{margin:0;font-size:13px;color:var(--muted)}
+  .save-status{
+    margin-inline-start:auto;font-size:12px;color:var(--muted);
+    padding:4px 10px;border-radius:8px;background:var(--bg);min-width:80px;text-align:center;
+  }
+  .save-status.saved{background:var(--success-soft);color:var(--success)}
+
+  /* ===== Section card ===== */
+  .section{
+    background:var(--surface);border-radius:16px;padding:20px 22px;
+    box-shadow:var(--shadow);margin-bottom:14px;
+  }
+  .section-title{
+    font-size:13px;color:var(--muted);font-weight:600;text-transform:none;
+    margin:0 0 14px;letter-spacing:.02em;
+  }
+
+  /* ===== Field ===== */
+  .field{margin-bottom:18px}
+  .field:last-child{margin-bottom:0}
+  .field-label{
+    display:block;font-size:14px;font-weight:600;color:var(--ink);
+    margin-bottom:6px;
+  }
+  .field-label .required{color:var(--accent);margin-inline-start:3px}
+  .field-help{font-size:12.5px;color:var(--muted);margin:-2px 0 8px}
+
+  .input, .textarea, .select{
+    width:100%;padding:11px 14px;font-size:15px;color:var(--ink);
+    background:var(--bg);border:1.5px solid transparent;border-radius:10px;
+    outline:none;transition:border-color .15s, background .15s;
+  }
+  .input:focus,.textarea:focus,.select:focus{
+    border-color:var(--accent);background:var(--surface);
+  }
+  .textarea{min-height:120px;resize:vertical;line-height:1.55;font-family:inherit}
+  .input-counter{
+    text-align:left;font-size:12px;color:var(--muted);margin-top:4px;
+  }
+  .input-counter.over{color:var(--error)}
+
+  /* ===== Chip multi-select ===== */
+  .chips{display:flex;flex-wrap:wrap;gap:6px}
+  .chip{
+    padding:7px 14px;border-radius:999px;font-size:13.5px;
+    background:var(--bg);color:var(--ink-soft);border:1.5px solid transparent;
+    cursor:pointer;transition:all .15s;font-weight:500;
+  }
+  .chip:hover{border-color:var(--border)}
+  .chip.active{background:var(--accent-soft);color:var(--accent-strong);border-color:var(--accent);font-weight:600}
+
+  /* ===== Radio (single-select) ===== */
+  .radio-row{display:flex;flex-wrap:wrap;gap:6px}
+  .radio-chip{
+    padding:9px 18px;border-radius:10px;font-size:14px;
+    background:var(--bg);color:var(--ink-soft);border:1.5px solid transparent;
+    cursor:pointer;transition:all .15s;font-weight:500;
+  }
+  .radio-chip.active{background:var(--accent);color:white;border-color:var(--accent);font-weight:600}
+
+  /* ===== Availability grid ===== */
+  .avail-grid{
+    display:grid;grid-template-columns:auto repeat(6,1fr);gap:4px;font-size:12px;
+    margin-top:6px;
+  }
+  .avail-grid .lbl{color:var(--muted);font-size:11.5px;padding:5px 0;text-align:center}
+  .avail-grid .day-h{
+    text-align:center;font-weight:600;color:var(--ink-soft);padding:5px 0;
+    background:var(--bg);border-radius:6px;
+  }
+  .avail-grid .cell{
+    background:var(--bg);border-radius:6px;height:34px;
+    display:flex;align-items:center;justify-content:center;cursor:pointer;
+    transition:background .12s;font-size:13px;color:transparent;
+  }
+  .avail-grid .cell:hover{background:#eaeae3}
+  .avail-grid .cell.on{background:var(--accent-soft);color:var(--accent-strong);font-weight:600}
+  .avail-grid .cell.on::after{content:"✓"}
+
+  /* ===== Spot toggle ===== */
+  .spot-toggle{
+    display:flex;align-items:center;gap:10px;padding:14px 16px;
+    background:var(--bg);border-radius:12px;cursor:pointer;
+    transition:background .15s;
+  }
+  .spot-toggle:hover{background:#eaeae3}
+  .spot-toggle.active{background:var(--success-soft)}
+  .switch{
+    width:44px;height:26px;border-radius:14px;background:#cbd5e1;
+    position:relative;transition:background .2s;flex-shrink:0;
+  }
+  .switch::after{
+    content:"";position:absolute;top:3px;right:3px;width:20px;height:20px;
+    background:white;border-radius:50%;transition:right .2s;
+    box-shadow:0 1px 3px rgba(0,0,0,.15);
+  }
+  .spot-toggle.active .switch{background:var(--success)}
+  .spot-toggle.active .switch::after{right:21px}
+  .spot-toggle .switch-label{font-weight:600;font-size:15px}
+  .spot-toggle .switch-sub{font-size:12.5px;color:var(--muted);margin-top:1px}
+
+  /* ===== Contact rows ===== */
+  .contact-field{display:flex;gap:10px;align-items:center;margin-bottom:10px}
+  .contact-field .ic{
+    width:36px;height:36px;border-radius:9px;background:var(--bg);
+    display:flex;align-items:center;justify-content:center;font-size:17px;
+    flex-shrink:0;
+  }
+  .wa-toggle{
+    display:flex;align-items:flex-start;gap:11px;padding:12px 14px;
+    background:#dcf3e7;border-radius:12px;cursor:pointer;margin:6px 0 4px;
+    transition:background .15s;user-select:none;
+  }
+  .wa-toggle:hover{background:#cfecdb}
+  .wa-toggle input{position:absolute;opacity:0;pointer-events:none}
+  .wa-box{
+    width:22px;height:22px;border:2px solid #25d366;border-radius:6px;
+    background:white;flex-shrink:0;display:flex;align-items:center;justify-content:center;
+    transition:all .15s;margin-top:1px;
+  }
+  .wa-check{color:white;font-weight:700;font-size:14px;opacity:0;transition:opacity .12s}
+  .wa-toggle input:checked ~ .wa-box{background:#25d366}
+  .wa-toggle input:checked ~ .wa-box .wa-check{opacity:1}
+  .wa-title{display:block;font-weight:600;font-size:14.5px;color:#0f8a5f;line-height:1.3}
+  .wa-sub{display:block;font-size:12.5px;color:#3f6f55;margin-top:2px;line-height:1.4}
+
+  /* ===== Footer save ===== */
+  .footer-save{
+    position:sticky;bottom:0;background:var(--bg);
+    padding:14px 16px;margin:0 -16px -16px;
+    border-top:1px solid var(--border);
+    display:flex;gap:10px;
+  }
+  @media(min-width:640px){
+    .footer-save{position:static;margin:0;padding:0;background:transparent;border:0}
+  }
+  .btn{
+    flex:1;padding:14px;font-size:15px;font-weight:600;border-radius:12px;
+    cursor:pointer;transition:all .15s;text-align:center;
+  }
+  .btn-primary{background:var(--accent);color:white}
+  .btn-primary:hover{background:var(--accent-strong)}
+  .btn-primary:disabled{background:var(--border);color:var(--muted);cursor:not-allowed}
+  .btn-secondary{background:var(--surface);color:var(--ink-soft);border:1.5px solid var(--border)}
+  .btn-secondary:hover{border-color:var(--ink-soft)}
+
+  .pub-status{
+    display:flex;align-items:center;gap:10px;padding:12px 14px;
+    border-radius:10px;font-size:13.5px;margin-bottom:14px;
+  }
+  .pub-status.draft{background:#fef3c7;color:#854d0e}
+  .pub-status.live{background:var(--success-soft);color:var(--success)}
+
+  .invalid{border-color:var(--error)!important}
+  .err-msg{font-size:12.5px;color:var(--error);margin-top:4px;display:none}
+  .err-msg.show{display:block}
+
+  .settings-cog{
+    position:fixed;bottom:18px;left:18px;z-index:30;
+    width:36px;height:36px;border-radius:50%;background:var(--surface);
+    box-shadow:var(--shadow);font-size:16px;color:var(--muted);
+    opacity:.6;transition:opacity .15s;
+  }
+  .settings-cog:hover{opacity:1}
+  .demo-badge{
+    background:#fef3c7;color:#854d0e;font-size:11px;padding:3px 9px;border-radius:8px;
+    font-weight:600;margin-inline-start:6px;display:none;
+  }
+</style>
+</head>
+<body>
+
+<div class="container">
+  <!-- Page header -->
+  <div class="page-head">
+    <div class="icon">✎</div>
+    <div>
+      <h1 id="headTitle">עריכת פרופיל <span class="demo-badge" id="demoBadge">דמו</span></h1>
+      <p>מאגר מדריכי הדרכה · בית הספר לפסיכותרפיה</p>
+    </div>
+    <div class="save-status" id="saveStatus">לא נשמר</div>
+  </div>
+
+  <button class="settings-cog" id="settingsCog" title="הגדרות backend">⚙</button>
+
+  <!-- Publication status -->
+  <div class="pub-status draft" id="pubStatus">
+    <span>○</span> <span>פרופיל לא מפורסם — מלא את כל השדות הנדרשים ולחץ "פרסם פרופיל"</span>
+  </div>
+
+  <!-- ===== Section 1: Identity ===== -->
+  <div class="section">
+    <div class="section-title">פרטים אישיים</div>
+
+    <div class="field">
+      <label class="field-label" for="fullName">שם מלא <span class="required">*</span></label>
+      <input class="input" id="fullName" maxlength="60" placeholder="ד״ר יעל כהן">
+    </div>
+
+    <div class="field">
+      <label class="field-label" for="credential">תואר / הסמכה <span class="required">*</span></label>
+      <input class="input" id="credential" maxlength="80" placeholder="פסיכולוגית קלינית מומחית, MA">
+    </div>
+
+    <div class="field">
+      <label class="field-label" for="years">שנות ניסיון בהדרכה <span class="required">*</span></label>
+      <input class="input" id="years" type="number" min="0" max="60" placeholder="12" style="max-width:140px">
+    </div>
+  </div>
+
+  <!-- ===== Section 2: Professional ===== -->
+  <div class="section">
+    <div class="section-title">תוכן מקצועי</div>
+
+    <div class="field">
+      <label class="field-label">אוריינטציה תיאורטית <span class="required">*</span></label>
+      <p class="field-help">בחר/י לפחות אחד. ניתן לבחור מספר אוריינטציות.</p>
+      <div class="chips" id="chips-orientations"></div>
+    </div>
+
+    <div class="field">
+      <label class="field-label">אוכלוסיות עליהן ידריך/תדריך <span class="required">*</span></label>
+      <p class="field-help">בחר/י לפחות אחד.</p>
+      <div class="chips" id="chips-populations"></div>
+    </div>
+
+    <div class="field">
+      <label class="field-label">תחומי התמחות <span class="required">*</span></label>
+      <p class="field-help">בחר/י עד 5 תחומים שבהם יש לך מומחיות מובהקת.</p>
+      <div class="chips" id="chips-specialties"></div>
+    </div>
+
+    <div class="field">
+      <label class="field-label" for="styleText">על הסגנון שלי <span class="required">*</span></label>
+      <p class="field-help">2-3 משפטים על הגישה שלך להדרכה. זה המקום שתלמיד באמת קורא.</p>
+      <textarea class="textarea" id="styleText" maxlength="400" placeholder="אני מאמינה שהדרכה טובה היא מרחב משותף לחקירה..."></textarea>
+      <div class="input-counter"><span id="styleCount">0</span> / 400</div>
+    </div>
+  </div>
+
+  <!-- ===== Section 3: Logistics ===== -->
+  <div class="section">
+    <div class="section-title">לוגיסטיקה ופגישה</div>
+
+    <div class="field">
+      <label class="field-label">פורמט <span class="required">*</span></label>
+      <div class="radio-row" id="radio-format"></div>
+    </div>
+
+    <div class="field" id="areaField">
+      <label class="field-label">אזור <span class="required">*</span></label>
+      <p class="field-help">לאן התלמיד מגיע (רלוונטי לפרונטלי או היברידי).</p>
+      <div class="radio-row" id="radio-area"></div>
+    </div>
+
+    <div class="field">
+      <label class="field-label">זמינות שבועית <span class="required">*</span></label>
+      <p class="field-help">סמן/י את הזמנים שבהם את/ה זמין/ה להדרכה. בחר/י לפחות משבצת אחת.</p>
+      <div class="avail-grid" id="availGrid"></div>
+    </div>
+  </div>
+
+  <!-- ===== Section 4: Open spot ===== -->
+  <div class="section">
+    <div class="section-title">סטטוס מקומות</div>
+    <div class="spot-toggle" id="spotToggle">
+      <div class="switch"></div>
+      <div>
+        <div class="switch-label">יש לי מקום פנוי להדרכה</div>
+        <div class="switch-sub">תלמידים יראו תווית "יש מקום". סגור כשלא נשארו מקומות.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== Section 5: Contact ===== -->
+  <div class="section">
+    <div class="section-title">דרכי יצירת קשר</div>
+    <p class="field-help" style="margin-top:-6px;margin-bottom:14px">חובה למלא לפחות אחד מהשדות. תלמידים יראו רק מה שמילאת.</p>
+
+    <div class="contact-field">
+      <div class="ic">☎</div>
+      <div style="flex:1">
+        <label class="field-label" for="phone" style="margin-bottom:4px">טלפון נייד</label>
+        <input class="input" id="phone" type="tel" inputmode="tel" placeholder="050-1234567">
+      </div>
+    </div>
+
+    <label class="wa-toggle">
+      <input type="checkbox" id="waCheck">
+      <span class="wa-box"><span class="wa-check">✓</span></span>
+      <span>
+        <span class="wa-title">אני זמין/ה גם ב-WhatsApp במספר זה</span>
+        <span class="wa-sub">תלמידים יראו גם כפתור WhatsApp עם הודעה מוכנה. ללא סימון — יראו רק כפתור חיוג.</span>
+      </span>
+    </label>
+
+    <div class="contact-field" style="margin-top:14px">
+      <div class="ic">✉</div>
+      <div style="flex:1">
+        <label class="field-label" for="email" style="margin-bottom:4px">דואר אלקטרוני</label>
+        <input class="input" id="email" type="email" placeholder="name@example.com">
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== Footer ===== -->
+  <div class="footer-save">
+    <button class="btn btn-secondary" id="btnSave">שמור טיוטה</button>
+    <button class="btn btn-primary" id="btnPublish">פרסם פרופיל</button>
+  </div>
+
+  <p style="text-align:center;font-size:12px;color:var(--muted);margin:18px 0 24px">
+    ניתן לחזור ולערוך בכל שלב. שמור את הקישור האישי שקיבלת מהצוות.
+  </p>
+</div>
+
+<script>
+let PARAMS = {
+  orientations:['פסיכודינמי','CBT','EFT','גשטאלט','נרטיבי','אינטגרטיבי','יחסי-אובייקט','מערכתי-משפחתי','JPT'],
+  populations:['מבוגרים','נוער','ילדים','זוגות','משפחות'],
+  specialties:['טראומה','חרדה ודיכאון','אובדן ושכול','הפרעות אכילה','התמכרויות','מיניות','פסיכוזה','ASD','רגישות דתית/חרדית','רב-תרבותי'],
+  formats:['פרונטלי','מקוון','היברידי'],
+  areas:['ירושלים','גוש עציון','מרכז','שפלה','צפון','דרום','שרון'],
+  days:['א','ב','ג','ד','ה','ו'],
+  timeOfDay:['בוקר','צהריים','ערב']
+};
+
+/* Backend API */
+const APPS_SCRIPT_URL = localStorage.getItem('apps-script-url') || '';
+const LIVE = !!APPS_SCRIPT_URL;
+const TOKEN = new URLSearchParams(location.search).get('token') || localStorage.getItem('supervisor-token') || '';
+
+async function apiCall(action, params){
+  if(!LIVE) return null;
+  try{
+    const url = new URL(APPS_SCRIPT_URL);
+    url.searchParams.set('action', action);
+    for(const [k,v] of Object.entries(params||{})){
+      url.searchParams.set(k, v == null ? '' : (typeof v === 'object' ? JSON.stringify(v) : v));
+    }
+    const r = await fetch(url.toString());
+    return await r.json();
+  }catch(e){ console.warn('API fail:', action, e); return null; }
+}
+
+let profile = {
+  fullName:'', credential:'', yearsSupervising:'',
+  orientations:[], populations:[], specialties:[],
+  format:'', area:'',
+  availability:{}, hasSpot:true, styleText:'',
+  contact:{phone:'', whatsappEnabled:false, email:''},
+  published:false
+};
+
+/* ===== Build chips/radios ===== */
+function buildChipGroup(containerId, items, key, max){
+  const c = document.getElementById(containerId);
+  c.innerHTML = '';
+  items.forEach(item=>{
+    const chip = document.createElement('button');
+    chip.className = 'chip';
+    chip.textContent = item;
+    chip.type = 'button';
+    chip.addEventListener('click', ()=>{
+      const idx = profile[key].indexOf(item);
+      if(idx >= 0){
+        profile[key].splice(idx,1);
+        chip.classList.remove('active');
+      } else {
+        if(max && profile[key].length >= max){
+          chip.animate([{transform:'scale(1)'},{transform:'scale(.95)'},{transform:'scale(1)'}],{duration:200});
+          return;
+        }
+        profile[key].push(item);
+        chip.classList.add('active');
+      }
+      markUnsaved();
+    });
+    c.appendChild(chip);
+  });
+}
+
+function buildRadioGroup(containerId, items, key, onChange){
+  const c = document.getElementById(containerId);
+  c.innerHTML = '';
+  items.forEach(item=>{
+    const btn = document.createElement('button');
+    btn.className = 'radio-chip';
+    btn.textContent = item;
+    btn.type = 'button';
+    btn.addEventListener('click', ()=>{
+      profile[key] = item;
+      c.querySelectorAll('.radio-chip').forEach(b=>b.classList.remove('active'));
+      btn.classList.add('active');
+      markUnsaved();
+      if(onChange) onChange(item);
+    });
+    c.appendChild(btn);
+  });
+}
+
+function buildAvailGrid(){
+  const g = document.getElementById('availGrid');
+  g.innerHTML = '';
+  // empty corner
+  g.appendChild(makeEl('div','lbl',''));
+  // day headers
+  PARAMS.days.forEach(d => g.appendChild(makeEl('div','day-h',d)));
+  // rows
+  PARAMS.timeOfDay.forEach(slot=>{
+    g.appendChild(makeEl('div','lbl',slot));
+    PARAMS.days.forEach(d=>{
+      const cell = makeEl('div','cell','');
+      cell.dataset.day = d; cell.dataset.slot = slot;
+      cell.addEventListener('click',()=>{
+        if(!profile.availability[d]) profile.availability[d] = [];
+        const idx = profile.availability[d].indexOf(slot);
+        if(idx >= 0){
+          profile.availability[d].splice(idx,1);
+          if(profile.availability[d].length === 0) delete profile.availability[d];
+          cell.classList.remove('on');
+        } else {
+          profile.availability[d].push(slot);
+          cell.classList.add('on');
+        }
+        markUnsaved();
+      });
+      g.appendChild(cell);
+    });
+  });
+}
+
+function makeEl(tag, cls, txt){
+  const e = document.createElement(tag);
+  e.className = cls; e.textContent = txt;
+  return e;
+}
+
+/* ===== Field bindings ===== */
+['fullName','credential','styleText'].forEach(id=>{
+  document.getElementById(id).addEventListener('input', e=>{
+    profile[id === 'styleText' ? 'styleText' : id] = e.target.value;
+    markUnsaved();
+  });
+});
+document.getElementById('years').addEventListener('input', e=>{
+  profile.yearsSupervising = e.target.value;
+  markUnsaved();
+});
+['phone','email'].forEach(id=>{
+  document.getElementById(id).addEventListener('input', e=>{
+    profile.contact[id] = e.target.value;
+    markUnsaved();
+  });
+});
+document.getElementById('waCheck').addEventListener('change', e=>{
+  profile.contact.whatsappEnabled = e.target.checked;
+  markUnsaved();
+});
+
+document.getElementById('styleText').addEventListener('input', e=>{
+  const c = document.getElementById('styleCount');
+  c.textContent = e.target.value.length;
+  c.parentElement.classList.toggle('over', e.target.value.length > 400);
+});
+
+/* ===== Spot toggle ===== */
+document.getElementById('spotToggle').addEventListener('click', ()=>{
+  profile.hasSpot = !profile.hasSpot;
+  document.getElementById('spotToggle').classList.toggle('active', profile.hasSpot);
+  markUnsaved();
+});
+
+/* ===== Format change ===== */
+function onFormatChange(val){
+  document.getElementById('areaField').style.display = val === 'מקוון' ? 'none' : 'block';
+}
+
+/* ===== Save state ===== */
+function markUnsaved(){
+  document.getElementById('saveStatus').textContent = 'לא נשמר';
+  document.getElementById('saveStatus').classList.remove('saved');
+}
+function markSaved(){
+  document.getElementById('saveStatus').textContent = '✓ נשמר';
+  document.getElementById('saveStatus').classList.add('saved');
+}
+
+/* ===== Init ===== */
+async function init(){
+  // Try loading parameters from server
+  if(LIVE){
+    const par = await apiCall('getParameters', {pin: localStorage.getItem('supervisor-match-pin') || ''});
+    if(par && par.parameters){
+      ['orientations','populations','specialties','formats','areas'].forEach(k=>{
+        if(par.parameters[k]) PARAMS[k] = par.parameters[k];
+      });
+    }
+  }
+
+  buildChipGroup('chips-orientations', PARAMS.orientations, 'orientations');
+  buildChipGroup('chips-populations', PARAMS.populations, 'populations');
+  buildChipGroup('chips-specialties', PARAMS.specialties, 'specialties', 5);
+  buildRadioGroup('radio-format', PARAMS.formats, 'format', onFormatChange);
+  buildRadioGroup('radio-area', PARAMS.areas, 'area');
+  buildAvailGrid();
+
+  // init spot toggle to default true
+  document.getElementById('spotToggle').classList.add('active');
+
+  // Load profile: from server (if token + LIVE) or localStorage (demo)
+  let loaded = false;
+  if(LIVE && TOKEN){
+    const r = await apiCall('getSupervisor', {token: TOKEN});
+    if(r && r.profile){
+      Object.assign(profile, r.profile);
+      restoreUI();
+      loaded = true;
+    } else if(r && r.error === 'not_found'){
+      alert('הקישור שלך לא נמצא. ייתכן שהוא לא תקין. פנה/י לרכז/ת.');
+    }
+  }
+  if(!loaded){
+    const saved = localStorage.getItem('supervisor-draft');
+    if(saved){
+      try{ Object.assign(profile, JSON.parse(saved)); restoreUI(); }catch(e){}
+    }
+  }
+
+  document.getElementById('btnSave').addEventListener('click', saveDraft);
+  document.getElementById('btnPublish').addEventListener('click', publish);
+  document.getElementById('settingsCog').addEventListener('click', openSettings);
+  if(!LIVE) document.getElementById('demoBadge').style.display='inline-block';
+}
+
+function openSettings(){
+  const cur = localStorage.getItem('apps-script-url') || '';
+  const url = prompt('כתובת Apps Script (השאר/י ריק לדמו מקומי):', cur);
+  if(url === null) return;
+  if(url.trim()) localStorage.setItem('apps-script-url', url.trim());
+  else localStorage.removeItem('apps-script-url');
+  location.reload();
+}
+
+function restoreUI(){
+  document.getElementById('fullName').value = profile.fullName || '';
+  document.getElementById('credential').value = profile.credential || '';
+  document.getElementById('years').value = profile.yearsSupervising || '';
+  document.getElementById('styleText').value = profile.styleText || '';
+  document.getElementById('styleCount').textContent = (profile.styleText||'').length;
+  document.getElementById('phone').value = profile.contact.phone || '';
+  document.getElementById('waCheck').checked = !!profile.contact.whatsappEnabled;
+  document.getElementById('email').value = profile.contact.email || '';
+
+  ['orientations','populations','specialties'].forEach(key=>{
+    document.querySelectorAll(`#chips-${key} .chip`).forEach(chip=>{
+      if(profile[key].includes(chip.textContent)) chip.classList.add('active');
+    });
+  });
+  if(profile.format){
+    document.querySelectorAll('#radio-format .radio-chip').forEach(b=>{
+      if(b.textContent === profile.format) b.classList.add('active');
+    });
+    onFormatChange(profile.format);
+  }
+  if(profile.area){
+    document.querySelectorAll('#radio-area .radio-chip').forEach(b=>{
+      if(b.textContent === profile.area) b.classList.add('active');
+    });
+  }
+  Object.entries(profile.availability||{}).forEach(([d,slots])=>{
+    slots.forEach(slot=>{
+      const c = document.querySelector(`.avail-grid .cell[data-day="${d}"][data-slot="${slot}"]`);
+      if(c) c.classList.add('on');
+    });
+  });
+  document.getElementById('spotToggle').classList.toggle('active', profile.hasSpot);
+  if(profile.published) showPublished();
+}
+
+function showPublished(){
+  const ps = document.getElementById('pubStatus');
+  ps.className = 'pub-status live';
+  ps.innerHTML = '<span>●</span> <span>הפרופיל מפורסם ונראה לתלמידים. אפשר להמשיך לערוך — שינויים נשמרים מיד.</span>';
+}
+
+function validate(){
+  const errors = [];
+  if(!profile.fullName) errors.push('שם מלא');
+  if(!profile.credential) errors.push('תואר / הסמכה');
+  if(!profile.yearsSupervising) errors.push('שנות ניסיון');
+  if(!profile.orientations.length) errors.push('אוריינטציה');
+  if(!profile.populations.length) errors.push('אוכלוסיות');
+  if(!profile.specialties.length) errors.push('תחומי התמחות');
+  if(!profile.styleText || profile.styleText.length < 50) errors.push('על הסגנון שלי (לפחות 50 תווים)');
+  if(!profile.format) errors.push('פורמט');
+  if(profile.format !== 'מקוון' && !profile.area) errors.push('אזור');
+  if(!Object.keys(profile.availability).length) errors.push('זמינות שבועית');
+  if(!profile.contact.phone && !profile.contact.email)
+    errors.push('טלפון או מייל (דרך יצירת קשר אחת לפחות)');
+  return errors;
+}
+
+async function saveDraft(){
+  if(LIVE && TOKEN){
+    const r = await apiCall('saveSupervisor', {token: TOKEN, data: JSON.stringify(profile)});
+    if(r && r.ok){ markSaved(); return; }
+    alert('השמירה לשרת נכשלה. נשמר זמנית בדפדפן.');
+  }
+  localStorage.setItem('supervisor-draft', JSON.stringify(profile));
+  markSaved();
+}
+
+async function publish(){
+  const errors = validate();
+  if(errors.length){
+    alert('חסרים שדות:\n\n· ' + errors.join('\n· '));
+    return;
+  }
+  profile.published = true;
+  if(LIVE && TOKEN){
+    const r = await apiCall('saveSupervisor', {token: TOKEN, data: JSON.stringify(profile)});
+    if(r && r.ok){ markSaved(); showPublished(); alert('הפרופיל פורסם בהצלחה. תלמידים יוכלו לראות אותו במאגר.'); return; }
+    alert('הפרסום נכשל. נסה/י שוב או בדוק/בדקי חיבור.');
+    return;
+  }
+  localStorage.setItem('supervisor-draft', JSON.stringify(profile));
+  markSaved();
+  showPublished();
+  alert('הפרופיל פורסם (מצב דמו, נשמר בדפדפן).');
+}
+
+init();
+</script>
+</body>
+</html>
