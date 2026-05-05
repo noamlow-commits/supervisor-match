@@ -460,6 +460,10 @@ async function apiCall(action, params){
 async function verifyPin(pin){
   if(LIVE){
     const r = await apiCall('verifyClassPin', {pin});
+    if(r === null){
+      // API failed — fall back to demo PIN so user isn't stuck
+      return pin === CLASS_PIN;
+    }
     return r && r.valid;
   }
   return pin === CLASS_PIN;
@@ -475,19 +479,25 @@ async function checkPin(){
   document.getElementById('pinInput').focus();
 }
 
-document.getElementById('pinInput').addEventListener('input', async e=>{
+let pinDebounce = null;
+document.getElementById('pinInput').addEventListener('input', e=>{
   const v = e.target.value;
-  if(v.length >= 4 && /^\d+$/.test(v)){
+  document.getElementById('pinError').textContent = '';
+  if(pinDebounce) clearTimeout(pinDebounce);
+  if(v.length < 4 || !/^\d+$/.test(v)) return;
+  pinDebounce = setTimeout(async ()=>{
     if(await verifyPin(v)){
       localStorage.setItem('supervisor-match-pin', v);
       document.getElementById('pinGate').style.display='none';
       init();
-    } else if(v.length >= 6) {
+    } else if(v.length >= 4) {
       document.getElementById('pinError').textContent = 'קוד שגוי';
-      e.target.value = '';
-      setTimeout(()=>document.getElementById('pinError').textContent='',1500);
+      setTimeout(()=>{
+        document.getElementById('pinError').textContent='';
+        document.getElementById('pinInput').value='';
+      }, 1200);
     }
-  }
+  }, 250);
 });
 
 /* ===== Init ===== */
