@@ -452,7 +452,7 @@ async function apiCall(action, params){
       url.searchParams.set(k, v == null ? '' : (typeof v === 'object' ? JSON.stringify(v) : v));
     }
     const ctrl = new AbortController();
-    const timeoutId = setTimeout(()=>ctrl.abort(), 8000);
+    const timeoutId = setTimeout(()=>ctrl.abort(), 12000);
     const r = await fetch(url.toString(), {signal: ctrl.signal});
     clearTimeout(timeoutId);
     return await r.json();
@@ -582,7 +582,9 @@ function matchesFilters(s){
 function render(){
   const filtered = SUPERVISORS.filter(matchesFilters);
   const grid = document.getElementById('grid');
-  document.getElementById('countBadge').textContent = `${filtered.length} מדריכים`;
+  const _n = filtered.length;
+  document.getElementById('countBadge').textContent =
+    _n === 0 ? 'אין מדריכים' : (_n === 1 ? 'מדריך אחד' : `${_n} מדריכים`);
 
   const totalActive = Object.values(activeFilters).reduce((sum,s)=>sum+s.size,0);
   const fc = document.getElementById('filterCount');
@@ -615,7 +617,7 @@ function render(){
       </div>
       <div class="card-meta">
         <span>${s.format}${s.area ? ' · ' + s.area : ''}</span>
-        <span>${s.yearsSupervising} שנות הדרכה</span>
+        <span>${s.yearsSupervising === 1 ? 'שנת הדרכה' : `${s.yearsSupervising} שנות הדרכה`}</span>
       </div>
       <div class="tags">
         ${s.orientations.slice(0,3).map(o=>`<span class="tag">${o}</span>`).join('')}
@@ -663,7 +665,7 @@ function openModal(s){
     <div class="modal-head">
       <h2>${s.fullName}</h2>
       <p class="credential">${s.credential}</p>
-      <div class="meta-line">${s.yearsSupervising} שנות הדרכה · ${s.format}${s.area?' · '+s.area:''} · <span class="pill ${s.hasSpot?'available':'full'}" style="font-size:11px">${s.hasSpot?'יש מקום':'אין מקום'}</span></div>
+      <div class="meta-line">${s.yearsSupervising === 1 ? 'שנת הדרכה' : `${s.yearsSupervising} שנות הדרכה`} · ${s.format}${s.area?' · '+s.area:''} · <span class="pill ${s.hasSpot?'available':'full'}" style="font-size:11px">${s.hasSpot?'יש מקום':'אין מקום'}</span></div>
     </div>
 
     <div class="field">

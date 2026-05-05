@@ -383,7 +383,7 @@ async function apiCall(action, params){
       url.searchParams.set(k, v == null ? '' : (typeof v === 'object' ? JSON.stringify(v) : v));
     }
     const ctrl = new AbortController();
-    const timeoutId = setTimeout(()=>ctrl.abort(), 8000);
+    const timeoutId = setTimeout(()=>ctrl.abort(), 12000);
     const r = await fetch(url.toString(), {signal: ctrl.signal});
     clearTimeout(timeoutId);
     return await r.json();
@@ -632,6 +632,12 @@ function showPublished(){
 }
 
 function validate(){
+  // Trim string fields before validating/saving (avoid leading/trailing whitespace bugs)
+  profile.fullName = (profile.fullName || '').trim();
+  profile.credential = (profile.credential || '').trim();
+  profile.styleText = (profile.styleText || '').trim();
+  profile.contact.phone = (profile.contact.phone || '').trim();
+  profile.contact.email = (profile.contact.email || '').trim();
   const errors = [];
   if(!profile.fullName) errors.push('שם מלא');
   if(!profile.credential) errors.push('תואר / הסמכה');
