@@ -247,7 +247,15 @@ function saveSupervisor(p) {
 
   for (const [k, v] of Object.entries(updates)) {
     const col = headers.indexOf(k);
-    if (col >= 0) sheet.getRange(rowIdx, col + 1).setValue(v);
+    if (col < 0) continue;
+    const cell = sheet.getRange(rowIdx, col + 1);
+    // Force phone column to text format so leading zeros are preserved
+    if (k === 'phone' && v) {
+      cell.setNumberFormat('@');
+      cell.setValue(String(v));
+    } else {
+      cell.setValue(v);
+    }
   }
 
   return { ok: true };

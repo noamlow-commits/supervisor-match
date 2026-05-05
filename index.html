@@ -648,11 +648,14 @@ function openModal(s){
   availHTML += `</div>`;
 
   // Contact buttons (only for filled channels)
-  const waNum = s.contact.phone ? s.contact.phone.replace(/\D/g,'').replace(/^0/,'972') : '';
+  // Coerce to string: Google Sheets may return phone as a Number (stripping the leading 0)
+  let phoneStr = s.contact.phone == null ? '' : String(s.contact.phone);
+  if(phoneStr && !phoneStr.startsWith('0') && /^\d+$/.test(phoneStr)) phoneStr = '0' + phoneStr;
+  const waNum = phoneStr ? phoneStr.replace(/\D/g,'').replace(/^0/,'972') : '';
   const msg = encodeURIComponent(`שלום ${s.fullName}, אני תלמיד/ה בבית הספר לפסיכותרפיה. ראיתי את הפרופיל שלך במאגר וברצוני לבדוק אפשרות להדרכה.`);
   let contactHTML = `<div class="contact-row">`;
-  if(s.contact.phone && s.contact.whatsappEnabled) contactHTML += `<a class="btn-contact btn-wa" href="https://wa.me/${waNum}?text=${msg}" target="_blank"><span class="ic">✦</span> פנייה ב-WhatsApp</a>`;
-  if(s.contact.phone) contactHTML += `<a class="btn-contact btn-tel" href="tel:${s.contact.phone}"><span class="ic">☎</span> חיוג: ${s.contact.phone}</a>`;
+  if(phoneStr && s.contact.whatsappEnabled) contactHTML += `<a class="btn-contact btn-wa" href="https://wa.me/${waNum}?text=${msg}" target="_blank"><span class="ic">✦</span> פנייה ב-WhatsApp</a>`;
+  if(phoneStr) contactHTML += `<a class="btn-contact btn-tel" href="tel:${phoneStr}"><span class="ic">☎</span> חיוג: ${phoneStr}</a>`;
   if(s.contact.email) contactHTML += `<a class="btn-contact btn-mail" href="mailto:${s.contact.email}?subject=${encodeURIComponent('פנייה דרך מאגר ההדרכה')}"><span class="ic">✉</span> שליחת מייל</a>`;
   contactHTML += `</div>`;
 
