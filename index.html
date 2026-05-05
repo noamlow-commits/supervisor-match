@@ -451,7 +451,10 @@ async function apiCall(action, params){
     for(const [k,v] of Object.entries(params||{})){
       url.searchParams.set(k, v == null ? '' : (typeof v === 'object' ? JSON.stringify(v) : v));
     }
-    const r = await fetch(url.toString());
+    const ctrl = new AbortController();
+    const timeoutId = setTimeout(()=>ctrl.abort(), 8000);
+    const r = await fetch(url.toString(), {signal: ctrl.signal});
+    clearTimeout(timeoutId);
     return await r.json();
   }catch(e){ console.warn('API fail:', action, e); return null; }
 }
@@ -486,6 +489,7 @@ document.getElementById('pinInput').addEventListener('input', e=>{
   if(pinDebounce) clearTimeout(pinDebounce);
   if(v.length < 4 || !/^\d+$/.test(v)) return;
   pinDebounce = setTimeout(async ()=>{
+    if(LIVE) document.getElementById('pinError').textContent = 'בודק...';
     if(await verifyPin(v)){
       localStorage.setItem('supervisor-match-pin', v);
       document.getElementById('pinGate').style.display='none';
