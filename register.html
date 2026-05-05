@@ -34,6 +34,19 @@
     display:flex;align-items:center;justify-content:center;color:var(--accent);
     font-size:26px;margin-bottom:18px;
   }
+  .brand-logo{
+    width:56px;height:56px;border-radius:14px;margin-bottom:14px;
+    object-fit:contain;background:white;padding:3px;
+    box-shadow:0 1px 4px rgba(15,23,42,.08);
+  }
+  .footer-rotenberg{
+    position:fixed;bottom:16px;left:50%;transform:translateX(-50%);
+    color:var(--muted);font-size:12.5px;
+    display:flex;align-items:center;justify-content:center;gap:8px;
+    z-index:5;pointer-events:none;
+  }
+  .footer-rotenberg img{pointer-events:auto}
+  .rotenberg-logo{height:22px;width:auto;opacity:.8}
   h1{font-size:22px;margin:0 0 6px;font-weight:600}
   .lead{margin:0 0 22px;color:var(--ink-soft);font-size:14.5px;line-height:1.55}
 
@@ -93,9 +106,9 @@
 
 <!-- ===== Step 1: Access code ===== -->
 <div class="card" id="step1">
-  <div class="icon-circle">⌨</div>
+  <img src="logo-school.webp" alt="הדיאלוגי" class="brand-logo">
   <h1>הרשמת מדריך/ה חדש/ה</h1>
-  <p class="lead">לבית הספר לפסיכותרפיה. הזן/י את קוד ההזמנה שקיבלת מצוות בית הספר.</p>
+  <p class="lead">לבית הספר הדיאלוגי. הזן/י את קוד ההזמנה שקיבלת מצוות בית הספר.</p>
 
   <div class="info">
     <b>טרם קיבלת קוד?</b> פנה/י לרכז/ת הלימודים — הקוד יישלח אליך במייל.
@@ -112,7 +125,7 @@
 
 <!-- ===== Step 2: Identify ===== -->
 <div class="card step-2" id="step2">
-  <div class="icon-circle">✎</div>
+  <img src="logo-school.webp" alt="הדיאלוגי" class="brand-logo">
   <h1>פרטים ראשונים</h1>
   <p class="lead">רק שם ומייל בשלב זה. נשלח אליך לינק אישי לעריכת הפרופיל המלא.</p>
 
@@ -147,6 +160,11 @@
   </div>
 
   <button class="btn" id="goEdit">המשך לעריכת פרופיל</button>
+</div>
+
+<div class="footer-rotenberg">
+  <span>מבית</span>
+  <img src="logo-rotenberg.webp" alt="מכון רוטנברג" class="rotenberg-logo">
 </div>
 
 <script>

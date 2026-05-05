@@ -54,11 +54,18 @@
   .header-inner{max-width:1100px;margin:0 auto;display:flex;align-items:center;gap:12px}
   .header h1{font-size:17px;margin:0;font-weight:600;color:var(--ink)}
   .header .sub{font-size:12px;color:var(--muted);margin:0}
-  .header .icon{
-    width:36px;height:36px;border-radius:10px;background:var(--accent-soft);
-    display:flex;align-items:center;justify-content:center;color:var(--accent);
-    font-size:18px;flex-shrink:0;
+  .brand-logo{
+    width:42px;height:42px;border-radius:10px;flex-shrink:0;
+    object-fit:contain;background:white;padding:2px;
+    box-shadow:0 1px 3px rgba(15,23,42,.06);
   }
+  .page-footer{
+    text-align:center;padding:32px 16px 28px;color:var(--muted);font-size:13px;
+    display:flex;align-items:center;justify-content:center;gap:10px;flex-wrap:wrap;
+    margin-top:20px;border-top:1px solid var(--line);
+    max-width:1100px;margin-inline:auto;
+  }
+  .rotenberg-logo{height:26px;width:auto;opacity:.85}
   .count-badge{
     margin-inline-start:auto;font-size:13px;color:var(--muted);
     background:var(--bg);padding:4px 10px;border-radius:10px;
@@ -257,14 +264,19 @@
 <!-- ===== Header ===== -->
 <header class="header">
   <div class="header-inner">
-    <div class="icon">◆</div>
+    <img src="logo-school.webp" alt="הדיאלוגי" class="brand-logo">
     <div>
       <h1>מאגר מדריכי הדרכה <span class="demo-badge" id="demoBadge" style="display:none">דמו</span></h1>
-      <p class="sub">בית הספר לפסיכותרפיה · עונה 2026</p>
+      <p class="sub">בית הספר הדיאלוגי · עונה 2026</p>
     </div>
     <div class="count-badge" id="countBadge">— מדריכים</div>
   </div>
 </header>
+
+<footer class="page-footer">
+  <span>מבית</span>
+  <img src="logo-rotenberg.webp" alt="מכון רוטנברג" class="rotenberg-logo">
+</footer>
 
 <button class="settings-cog" id="settingsCog" title="הגדרות backend">⚙</button>
 

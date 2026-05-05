@@ -41,6 +41,17 @@
     display:flex;align-items:center;justify-content:center;color:var(--accent);
     font-size:22px;flex-shrink:0;
   }
+  .brand-logo{
+    width:44px;height:44px;border-radius:12px;flex-shrink:0;
+    object-fit:contain;background:white;padding:2px;
+    box-shadow:0 1px 3px rgba(15,23,42,.06);
+  }
+  .page-footer{
+    text-align:center;padding:28px 16px;color:var(--muted);font-size:13px;
+    display:flex;align-items:center;justify-content:center;gap:10px;flex-wrap:wrap;
+    margin-top:8px;
+  }
+  .rotenberg-logo{height:24px;width:auto;opacity:.8}
   .page-head h1{font-size:18px;margin:0 0 2px;font-weight:600}
   .page-head p{margin:0;font-size:13px;color:var(--muted)}
   .save-status{
@@ -217,10 +228,10 @@
 <div class="container">
   <!-- Page header -->
   <div class="page-head">
-    <div class="icon">✎</div>
+    <img src="logo-school.webp" alt="הדיאלוגי" class="brand-logo">
     <div>
       <h1 id="headTitle">עריכת פרופיל <span class="demo-badge" id="demoBadge">דמו</span></h1>
-      <p>מאגר מדריכי הדרכה · בית הספר לפסיכותרפיה</p>
+      <p>מאגר מדריכי הדרכה · בית הספר הדיאלוגי</p>
     </div>
     <div class="save-status" id="saveStatus">לא נשמר</div>
   </div>
@@ -353,9 +364,14 @@
     <button class="btn btn-primary" id="btnPublish">פרסם פרופיל</button>
   </div>
 
-  <p style="text-align:center;font-size:12px;color:var(--muted);margin:18px 0 24px">
+  <p style="text-align:center;font-size:12px;color:var(--muted);margin:18px 0 8px">
     ניתן לחזור ולערוך בכל שלב. שמור את הקישור האישי שקיבלת מהצוות.
   </p>
+
+  <footer class="page-footer">
+    <span>מבית</span>
+    <img src="logo-rotenberg.webp" alt="מכון רוטנברג" class="rotenberg-logo">
+  </footer>
 </div>
 
 <script>
