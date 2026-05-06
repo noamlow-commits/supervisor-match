@@ -291,7 +291,7 @@
     </button>
     <div class="filter-panel" id="filterPanel">
       <div class="filter-group">
-        <div class="filter-group-label">אוריינטציה</div>
+        <div class="filter-group-label">סוג טיפול</div>
         <div class="chip-row" data-filter="orientations"></div>
       </div>
       <div class="filter-group">
@@ -336,7 +336,7 @@ const CLASS_PIN = '2026'; // changeable in production via Apps Script settings
 
 /* ===== Parameter Lists (loaded from Sheet's Parameters tab when wired) ===== */
 let PARAMS = {
-  orientations: ['פסיכודינמי','CBT','EFT','גשטאלט','נרטיבי','אינטגרטיבי','יחסי-אובייקט','מערכתי-משפחתי','JPT'],
+  orientations: ['דינאמי','CBT','טיפול ממוקד טראומה - SE/EMDR','טיפול זוגי','מיניות','התמכרויות'],
   populations: ['מבוגרים','נוער','ילדים','זוגות','משפחות'],
   specialties: ['טראומה','חרדה ודיכאון','אובדן ושכול','הפרעות אכילה','התמכרויות','מיניות','פסיכוזה','ASD','רגישות דתית/חרדית','רב-תרבותי'],
   formats: ['פרונטלי','מקוון','היברידי'],
@@ -686,7 +686,7 @@ function openModal(s){
     </div>
 
     <div class="field">
-      <div class="field-label">אוריינטציה תיאורטית</div>
+      <div class="field-label">סוגי טיפול</div>
       <div class="tags">${s.orientations.map(o=>`<span class="tag">${o}</span>`).join('')}</div>
     </div>
 

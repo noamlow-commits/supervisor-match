@@ -1,0 +1,357 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>דשבורד הנהלה — מאגר מדריכים</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Assistant:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#f7f5f0; --surface:#ffffff; --ink:#1f2937; --ink-soft:#4b5563; --muted:#6b7280;
+    --border:#e5e7eb; --line:#eef0ed; --accent:#5b8a72; --accent-soft:#e8efe9;
+    --accent-strong:#476e58;
+    --available:#0f8a5f; --available-bg:#dcf3e7;
+    --warn:#d97706; --warn-bg:#fef3c7;
+    --full:#9ca3af; --full-bg:#f3f4f6;
+    --shadow: 0 1px 2px rgba(15,23,42,.04), 0 4px 14px rgba(15,23,42,.06);
+  }
+  *,*::before,*::after{box-sizing:border-box}
+  html,body{margin:0;padding:0}
+  body{font-family:'Assistant',sans-serif;background:var(--bg);color:var(--ink);font-size:16px;line-height:1.5;-webkit-font-smoothing:antialiased;min-height:100vh}
+  button{font-family:inherit;font-size:inherit;cursor:pointer;border:0;background:none}
+  input{font-family:inherit;font-size:inherit}
+
+  /* ====== PIN Gate ====== */
+  .pin-gate{position:fixed;inset:0;z-index:100;background:var(--bg);display:flex;align-items:center;justify-content:center;padding:24px}
+  .pin-card{background:var(--surface);border-radius:18px;padding:32px 28px;box-shadow:var(--shadow);max-width:380px;width:100%;text-align:center}
+  .pin-card .icon{width:56px;height:56px;border-radius:16px;background:var(--accent-soft);display:flex;align-items:center;justify-content:center;color:var(--accent);font-size:24px;margin:0 auto 14px}
+  .pin-card h1{font-size:20px;margin:0 0 6px;font-weight:600}
+  .pin-card p{margin:0 0 20px;color:var(--ink-soft);font-size:14px}
+  .pin-input{width:100%;padding:14px;font-size:18px;text-align:center;border:1.5px solid var(--border);border-radius:12px;background:var(--bg);color:var(--ink);outline:none;font-family:'Courier New',monospace;letter-spacing:1px}
+  .pin-input:focus{border-color:var(--accent);background:var(--surface)}
+  .pin-error{color:#b91c1c;font-size:13px;margin-top:10px;min-height:18px}
+  .pin-btn{margin-top:14px;width:100%;padding:13px;font-size:15px;font-weight:600;border-radius:12px;background:var(--accent);color:white}
+  .pin-btn:hover{background:var(--accent-strong)}
+
+  /* ====== Header ====== */
+  .header{background:var(--surface);border-bottom:1px solid var(--border);padding:14px 16px;position:sticky;top:0;z-index:20}
+  .header-inner{max-width:1200px;margin:0 auto;display:flex;align-items:center;gap:12px}
+  .brand-logo{width:42px;height:42px;border-radius:10px;flex-shrink:0;object-fit:contain;background:white;padding:2px;box-shadow:0 1px 3px rgba(15,23,42,.06)}
+  .header h1{font-size:17px;margin:0 0 2px;font-weight:600}
+  .header .sub{font-size:12px;color:var(--muted);margin:0}
+  .refresh-btn{margin-inline-start:auto;background:var(--accent-soft);color:var(--accent);padding:8px 14px;border-radius:10px;font-size:13px;font-weight:600;display:flex;align-items:center;gap:6px}
+  .refresh-btn:hover{background:var(--accent);color:white}
+
+  /* ====== Container ====== */
+  .container{max-width:1200px;margin:0 auto;padding:20px 16px 60px}
+
+  /* ====== Summary cards ====== */
+  .summary-grid{display:grid;grid-template-columns:1fr;gap:12px;margin-bottom:24px}
+  @media(min-width:640px){.summary-grid{grid-template-columns:repeat(2,1fr);gap:14px}}
+  @media(min-width:960px){.summary-grid{grid-template-columns:repeat(4,1fr)}}
+  .summary-card{background:var(--surface);border-radius:14px;padding:18px 20px;box-shadow:var(--shadow)}
+  .summary-card .label{font-size:12px;color:var(--muted);font-weight:600;margin-bottom:6px}
+  .summary-card .value{font-size:32px;font-weight:700;color:var(--ink);line-height:1.1}
+  .summary-card .sub{font-size:13px;color:var(--ink-soft);margin-top:4px}
+  .summary-card.green .value{color:var(--available)}
+  .summary-card.warn .value{color:var(--warn)}
+
+  /* ====== Progress bar ====== */
+  .progress-card{background:var(--surface);border-radius:14px;padding:18px 22px;box-shadow:var(--shadow);margin-bottom:24px}
+  .progress-head{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:10px}
+  .progress-head .title{font-weight:600;font-size:15px}
+  .progress-head .pct{font-size:14px;color:var(--muted)}
+  .bar{width:100%;height:14px;background:var(--bg);border-radius:8px;overflow:hidden}
+  .bar-fill{height:100%;background:linear-gradient(90deg,var(--accent),var(--accent-strong));border-radius:8px;transition:width .4s}
+
+  /* ====== Supervisors table ====== */
+  .table-card{background:var(--surface);border-radius:14px;padding:0;box-shadow:var(--shadow);overflow:hidden}
+  .table-head{padding:18px 22px 12px;border-bottom:1px solid var(--line)}
+  .table-head h2{margin:0;font-size:16px;font-weight:600}
+  .table-head .desc{margin:4px 0 0;font-size:13px;color:var(--muted)}
+
+  table{width:100%;border-collapse:collapse;font-size:14px}
+  thead th{
+    background:var(--bg);padding:10px 16px;text-align:right;font-weight:600;font-size:12.5px;
+    color:var(--muted);text-transform:none;letter-spacing:.02em;
+    border-bottom:1px solid var(--border);
+  }
+  tbody td{padding:14px 16px;border-bottom:1px solid var(--line);vertical-align:middle}
+  tbody tr:last-child td{border-bottom:0}
+  tbody tr:hover{background:var(--bg)}
+  .name-cell{font-weight:600;color:var(--ink)}
+  .name-cell .credential{display:block;font-size:12px;color:var(--muted);font-weight:400;margin-top:2px}
+
+  .badge{display:inline-flex;align-items:center;gap:4px;font-size:11.5px;padding:3px 9px;border-radius:999px;font-weight:600;white-space:nowrap}
+  .badge.published{background:var(--available-bg);color:var(--available)}
+  .badge.unpublished{background:var(--warn-bg);color:var(--warn)}
+  .badge.spot-yes{background:var(--available-bg);color:var(--available)}
+  .badge.spot-no{background:var(--full-bg);color:var(--full)}
+  .badge.zero{background:var(--full-bg);color:var(--full)}
+
+  .num-students{font-size:16px;font-weight:700;color:var(--ink)}
+  .num-students.zero{color:var(--muted);font-weight:500}
+
+  .contact-mini{font-size:12px;color:var(--muted);direction:ltr;text-align:right}
+  .contact-mini a{color:var(--accent);text-decoration:none}
+  .contact-mini a:hover{text-decoration:underline}
+
+  /* Mobile table fallback */
+  @media(max-width:640px){
+    table thead{display:none}
+    table, tbody, tr, td{display:block;width:100%}
+    tbody tr{padding:14px 16px;border-bottom:1px solid var(--line)}
+    tbody td{padding:4px 0;border:0;display:flex;justify-content:space-between;gap:12px}
+    tbody td::before{content:attr(data-label);font-size:12px;color:var(--muted);font-weight:600}
+    .name-cell{display:block !important;text-align:right}
+    .name-cell::before{display:none}
+  }
+
+  .empty-state{padding:50px 20px;text-align:center;color:var(--muted)}
+  .empty-state .ic{font-size:36px;opacity:.5;margin-bottom:8px}
+
+  .settings-cog{position:fixed;bottom:18px;left:18px;z-index:30;width:36px;height:36px;border-radius:50%;background:var(--surface);box-shadow:var(--shadow);font-size:16px;color:var(--muted);opacity:.6}
+  .settings-cog:hover{opacity:1}
+  .demo-badge{background:#fef3c7;color:#854d0e;font-size:11px;padding:3px 9px;border-radius:8px;font-weight:600;margin-inline-start:6px;display:none}
+
+  .page-footer{text-align:center;padding:30px 16px 0;color:var(--muted);font-size:13px;display:flex;align-items:center;justify-content:center;gap:10px;flex-wrap:wrap;margin-top:30px}
+  .rotenberg-logo{height:24px;width:auto;opacity:.8}
+
+  .err-banner{background:#fee2e2;color:#991b1b;padding:10px 14px;border-radius:10px;font-size:13.5px;margin:14px 0;display:none}
+  .err-banner.show{display:block}
+</style>
+</head>
+<body>
+
+<!-- ===== PIN gate ===== -->
+<div class="pin-gate" id="pinGate">
+  <div class="pin-card">
+    <div class="icon">🔒</div>
+    <h1>דשבורד הנהלה</h1>
+    <p>גישה למזכירה האקדמית ולצוות הניהול בלבד</p>
+    <input type="password" class="pin-input" id="pinInput" placeholder="הזן/י סיסמה" autocomplete="off">
+    <div class="pin-error" id="pinError"></div>
+    <button class="pin-btn" id="pinBtn">כניסה</button>
+  </div>
+</div>
+
+<!-- ===== Header ===== -->
+<header class="header">
+  <div class="header-inner">
+    <img src="logo-school.webp" alt="הדיאלוגי" class="brand-logo">
+    <div>
+      <h1>דשבורד הנהלה <span class="demo-badge" id="demoBadge">דמו</span></h1>
+      <p class="sub">מאגר מדריכי הדרכה · בית הספר הדיאלוגי</p>
+    </div>
+    <button class="refresh-btn" id="refreshBtn">↻ רענן</button>
+  </div>
+</header>
+
+<div class="container">
+  <div class="err-banner" id="errBanner"></div>
+
+  <!-- Summary cards -->
+  <div class="summary-grid" id="summaryGrid">
+    <div class="summary-card"><div class="label">סך מדריכים</div><div class="value" id="sumTotal">—</div><div class="sub" id="sumPublished">— מפורסמים</div></div>
+    <div class="summary-card green"><div class="label">תלמידים שובצו</div><div class="value" id="sumAccepted">—</div><div class="sub" id="sumExpected">מתוך — צפויים</div></div>
+    <div class="summary-card warn"><div class="label">תלמידים ממתינים</div><div class="value" id="sumRemaining">—</div><div class="sub">לא שובצו עדיין</div></div>
+    <div class="summary-card"><div class="label">מקומות פנויים</div><div class="value" id="sumWithSpot">—</div><div class="sub">מדריכים עם מקום</div></div>
+  </div>
+
+  <!-- Progress -->
+  <div class="progress-card">
+    <div class="progress-head">
+      <span class="title">השלמת השיבוץ</span>
+      <span class="pct" id="progressPct">—%</span>
+    </div>
+    <div class="bar"><div class="bar-fill" id="progressBar" style="width:0%"></div></div>
+  </div>
+
+  <!-- Supervisors table -->
+  <div class="table-card">
+    <div class="table-head">
+      <h2>פירוט לפי מדריך</h2>
+      <p class="desc">מסודר לפי מספר תלמידים. מדריכים עם 0 תלמידים מופיעים בסוף.</p>
+    </div>
+    <div id="tableContainer"></div>
+  </div>
+
+  <footer class="page-footer">
+    <span>מבית</span>
+    <img src="logo-rotenberg.webp" alt="מכון רוטנברג" class="rotenberg-logo">
+  </footer>
+</div>
+
+<button class="settings-cog" id="settingsCog" title="הגדרות backend">⚙</button>
+
+<script>
+const APPS_SCRIPT_URL = localStorage.getItem('apps-script-url') || '';
+const LIVE = !!APPS_SCRIPT_URL;
+
+async function apiCall(action, params){
+  if(!LIVE) return null;
+  try{
+    const url = new URL(APPS_SCRIPT_URL);
+    url.searchParams.set('action', action);
+    for(const [k,v] of Object.entries(params||{})){
+      url.searchParams.set(k, v == null ? '' : v);
+    }
+    const ctrl = new AbortController();
+    const t = setTimeout(()=>ctrl.abort(), 12000);
+    const r = await fetch(url.toString(), {signal: ctrl.signal});
+    clearTimeout(t);
+    return await r.json();
+  }catch(e){ console.warn('API fail:', action, e); return null; }
+}
+
+/* ===== PIN Gate ===== */
+async function tryAdminPin(pin){
+  if(!LIVE){
+    // demo mode: accept any non-empty pin
+    return !!pin;
+  }
+  const r = await apiCall('verifyAdminPin', {adminPin: pin});
+  return r && r.valid;
+}
+
+async function attemptLogin(){
+  const v = document.getElementById('pinInput').value.trim();
+  if(!v) return;
+  const btn = document.getElementById('pinBtn');
+  btn.disabled = true; btn.textContent = 'בודק...';
+  const ok = await tryAdminPin(v);
+  btn.disabled = false; btn.textContent = 'כניסה';
+  if(ok){
+    sessionStorage.setItem('admin-pin', v);
+    document.getElementById('pinGate').style.display = 'none';
+    loadStats();
+  } else {
+    document.getElementById('pinError').textContent = 'סיסמה שגויה';
+    document.getElementById('pinInput').value = '';
+    document.getElementById('pinInput').focus();
+    setTimeout(()=>document.getElementById('pinError').textContent='', 1500);
+  }
+}
+
+document.getElementById('pinBtn').addEventListener('click', attemptLogin);
+document.getElementById('pinInput').addEventListener('keydown', e=>{ if(e.key === 'Enter') attemptLogin(); });
+
+/* ===== Stats ===== */
+async function loadStats(){
+  const pin = sessionStorage.getItem('admin-pin') || '';
+  document.getElementById('errBanner').classList.remove('show');
+
+  if(!LIVE){
+    renderDemo();
+    return;
+  }
+
+  const r = await apiCall('getAdminStats', {adminPin: pin});
+  if(!r || r.error){
+    showErr(r && r.message ? r.message : 'שגיאה בטעינת נתונים. בדוק/בדקי את ה-URL בהגדרות.');
+    return;
+  }
+  renderStats(r);
+}
+
+function showErr(msg){
+  const e = document.getElementById('errBanner');
+  e.textContent = '⚠ ' + msg;
+  e.classList.add('show');
+}
+
+function renderStats(d){
+  const s = d.summary;
+  document.getElementById('sumTotal').textContent = s.totalSupervisors;
+  document.getElementById('sumPublished').textContent = `${s.publishedCount} מפורסמים`;
+  document.getElementById('sumAccepted').textContent = s.totalAccepted;
+  document.getElementById('sumExpected').textContent = s.expectedStudents > 0 ? `מתוך ${s.expectedStudents} צפויים` : 'יעד לא הוגדר';
+  document.getElementById('sumRemaining').textContent = s.expectedStudents > 0 ? s.remaining : '—';
+  document.getElementById('sumWithSpot').textContent = s.withSpotCount;
+
+  const pct = s.expectedStudents > 0 ? Math.min(100, Math.round((s.totalAccepted / s.expectedStudents) * 100)) : 0;
+  document.getElementById('progressPct').textContent = pct + '%';
+  document.getElementById('progressBar').style.width = pct + '%';
+
+  renderTable(d.supervisors);
+}
+
+function renderTable(supervisors){
+  const c = document.getElementById('tableContainer');
+  if(!supervisors || supervisors.length === 0){
+    c.innerHTML = '<div class="empty-state"><div class="ic">∅</div><p>אין עדיין מדריכים רשומים.</p></div>';
+    return;
+  }
+  let html = `<table>
+    <thead><tr>
+      <th>מדריך</th>
+      <th>תלמידים</th>
+      <th>מקום פנוי</th>
+      <th>סטטוס פרסום</th>
+      <th>פרטי קשר</th>
+    </tr></thead>
+    <tbody>`;
+  supervisors.forEach(s=>{
+    const phoneStr = s.phone ? String(s.phone).replace(/^(\d)/, '0$1').replace(/^00/, '0') : '';
+    html += `<tr>
+      <td class="name-cell" data-label="מדריך">${esc(s.fullName)}<span class="credential">${esc(s.credential)}</span></td>
+      <td data-label="תלמידים"><span class="num-students${s.studentsAccepted === 0 ? ' zero':''}">${s.studentsAccepted}</span></td>
+      <td data-label="מקום פנוי"><span class="badge ${s.hasSpot ? 'spot-yes' : 'spot-no'}">${s.hasSpot ? '✓ יש מקום' : '× אין מקום'}</span></td>
+      <td data-label="פרסום"><span class="badge ${s.published ? 'published' : 'unpublished'}">${s.published ? '● מפורסם' : '○ טיוטה'}</span></td>
+      <td data-label="קשר"><div class="contact-mini">${s.email ? `<a href="mailto:${esc(s.email)}">${esc(s.email)}</a><br>`:''}${phoneStr ? `<a href="tel:${esc(phoneStr)}">${esc(phoneStr)}</a>`:''}</div></td>
+    </tr>`;
+  });
+  html += '</tbody></table>';
+  c.innerHTML = html;
+}
+
+function esc(s){ return String(s == null ? '' : s).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
+function renderDemo(){
+  document.getElementById('demoBadge').style.display = 'inline-block';
+  renderStats({
+    summary: {totalSupervisors: 8, publishedCount: 7, totalAccepted: 12, expectedStudents: 25, remaining: 13, withSpotCount: 5},
+    supervisors: [
+      {fullName:'ד״ר יעל כהן', credential:'פסיכולוגית קלינית מומחית, MA', published:true, hasSpot:true, studentsAccepted:3, email:'yael@example.com', phone:'0501234567'},
+      {fullName:'אבי לוי', credential:'עו״ס קליני', published:true, hasSpot:true, studentsAccepted:2, email:'avi@example.com', phone:'0507654321'},
+      {fullName:'ד״ר שרה אברמוביץ', credential:'פסיכולוגית קלינית בכירה', published:true, hasSpot:false, studentsAccepted:4, email:'sara@example.com', phone:'036123456'},
+      {fullName:'משה רוזנברג', credential:'פסיכותרפיסט, MSc', published:true, hasSpot:true, studentsAccepted:1, email:'moshe@example.com', phone:'0521122334'},
+      {fullName:'ד״ר רותי בן-עמי', credential:'ילדים ונוער', published:true, hasSpot:true, studentsAccepted:2, email:'ruti@example.com', phone:'0509988776'},
+      {fullName:'דניאל שטרן', credential:'מטפל זוגי', published:true, hasSpot:false, studentsAccepted:0, email:'daniel@example.com', phone:'0533344556'},
+      {fullName:'ד״ר חנה גרין', credential:'CBT-T', published:false, hasSpot:true, studentsAccepted:0, email:'hana@example.com', phone:'0541112233'},
+      {fullName:'יוסף ברנשטיין', credential:'מומחה טראומה', published:true, hasSpot:true, studentsAccepted:0, email:'yosef@example.com', phone:'0508887766'}
+    ]
+  });
+}
+
+/* ===== Buttons & init ===== */
+document.getElementById('refreshBtn').addEventListener('click', loadStats);
+document.getElementById('settingsCog').addEventListener('click', ()=>{
+  const cur = localStorage.getItem('apps-script-url') || '';
+  const url = prompt('כתובת Apps Script (השאר/י ריק לדמו):', cur);
+  if(url === null) return;
+  if(url.trim()) localStorage.setItem('apps-script-url', url.trim());
+  else localStorage.removeItem('apps-script-url');
+  location.reload();
+});
+
+// Auto-skip PIN if previously entered this session
+const stored = sessionStorage.getItem('admin-pin');
+if(stored){
+  tryAdminPin(stored).then(ok=>{
+    if(ok){
+      document.getElementById('pinGate').style.display = 'none';
+      loadStats();
+    } else {
+      sessionStorage.removeItem('admin-pin');
+      document.getElementById('pinInput').focus();
+    }
+  });
+} else {
+  document.getElementById('pinInput').focus();
+}
+</script>
+</body>
+</html>

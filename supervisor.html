@@ -268,8 +268,8 @@
     <div class="section-title">תוכן מקצועי</div>
 
     <div class="field">
-      <label class="field-label">אוריינטציה תיאורטית <span class="required">*</span></label>
-      <p class="field-help">בחר/י לפחות אחד. ניתן לבחור מספר אוריינטציות.</p>
+      <label class="field-label">סוגי טיפול <span class="required">*</span></label>
+      <p class="field-help">בחר/י לפחות אחד. ניתן לבחור מספר סוגי טיפול.</p>
       <div class="chips" id="chips-orientations"></div>
     </div>
 
@@ -315,7 +315,7 @@
     </div>
   </div>
 
-  <!-- ===== Section 4: Open spot ===== -->
+  <!-- ===== Section 4: Open spot + Accepted students ===== -->
   <div class="section">
     <div class="section-title">סטטוס מקומות</div>
     <div class="spot-toggle" id="spotToggle">
@@ -324,6 +324,12 @@
         <div class="switch-label">יש לי מקום פנוי להדרכה</div>
         <div class="switch-sub">תלמידים יראו תווית "יש מקום". סגור כשלא נשארו מקומות.</div>
       </div>
+    </div>
+
+    <div class="field" style="margin-top:16px">
+      <label class="field-label" for="studentsAccepted">כמה תלמידים אישרת לקבל השנה</label>
+      <p class="field-help">עדכן/י את המספר כשאת/ה מאשר/ת תלמיד חדש. רק המזכירה האקדמית רואה את המספרים האלה — לא תלמידים ולא מדריכים אחרים.</p>
+      <input class="input" id="studentsAccepted" type="number" min="0" max="20" value="0" style="max-width:120px">
     </div>
   </div>
 
@@ -376,7 +382,7 @@
 
 <script>
 let PARAMS = {
-  orientations:['פסיכודינמי','CBT','EFT','גשטאלט','נרטיבי','אינטגרטיבי','יחסי-אובייקט','מערכתי-משפחתי','JPT'],
+  orientations:['דינאמי','CBT','טיפול ממוקד טראומה - SE/EMDR','טיפול זוגי','מיניות','התמכרויות'],
   populations:['מבוגרים','נוער','ילדים','זוגות','משפחות'],
   specialties:['טראומה','חרדה ודיכאון','אובדן ושכול','הפרעות אכילה','התמכרויות','מיניות','פסיכוזה','ASD','רגישות דתית/חרדית','רב-תרבותי'],
   formats:['פרונטלי','מקוון','היברידי'],
@@ -412,6 +418,7 @@ let profile = {
   format:'', area:'',
   availability:{}, hasSpot:true, styleText:'',
   contact:{phone:'', whatsappEnabled:false, email:''},
+  studentsAccepted:0,
   published:false
 };
 
@@ -508,6 +515,10 @@ function makeEl(tag, cls, txt){
 });
 document.getElementById('years').addEventListener('input', e=>{
   profile.yearsSupervising = e.target.value;
+  markUnsaved();
+});
+document.getElementById('studentsAccepted').addEventListener('input', e=>{
+  profile.studentsAccepted = Math.max(0, Number(e.target.value) || 0);
   markUnsaved();
 });
 ['phone','email'].forEach(id=>{
@@ -609,6 +620,7 @@ function restoreUI(){
   document.getElementById('fullName').value = profile.fullName || '';
   document.getElementById('credential').value = profile.credential || '';
   document.getElementById('years').value = profile.yearsSupervising || '';
+  document.getElementById('studentsAccepted').value = profile.studentsAccepted || 0;
   document.getElementById('styleText').value = profile.styleText || '';
   document.getElementById('styleCount').textContent = (profile.styleText||'').length;
   document.getElementById('phone').value = profile.contact.phone || '';

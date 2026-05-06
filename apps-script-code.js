@@ -32,7 +32,8 @@ const SUPERVISOR_COLS = [
   'orientations', 'populations', 'specialties',
   'styleText', 'format', 'area',
   'availability', 'hasSpot',
-  'phone', 'whatsappEnabled', 'email'
+  'phone', 'whatsappEnabled', 'email',
+  'studentsAccepted'
 ];
 
 /* ========== Routing ========== */
@@ -54,11 +55,13 @@ function handleRequest(e) {
     switch (action) {
       case 'verifyClassPin':         result = verifyClassPin(params); break;
       case 'verifyRegistrationCode': result = verifyRegistrationCode(params); break;
+      case 'verifyAdminPin':         result = verifyAdminPin(params); break;
       case 'registerSupervisor':     result = registerSupervisor(params); break;
       case 'getSupervisors':         result = getSupervisors(params); break;
       case 'getSupervisor':          result = getSupervisor(params); break;
       case 'saveSupervisor':         result = saveSupervisor(params); break;
       case 'getParameters':          result = getParameters(params); break;
+      case 'getAdminStats':          result = getAdminStats(params); break;
       default:                       result = { error: 'unknown_action', action };
     }
     return jsonOut(result);
@@ -84,8 +87,17 @@ function verifyRegistrationCode(p) {
   return { valid: String(p.code || '').toUpperCase() === String(expected).toUpperCase() };
 }
 
+function verifyAdminPin(p) {
+  const expected = getSetting('adminPin') || 'cfgush26admin';
+  return { valid: String(p.adminPin || '') === String(expected) };
+}
+
 function requireClassPin(p) {
   if (!verifyClassPin(p).valid) throw new Error('invalid_pin');
+}
+
+function requireAdminPin(p) {
+  if (!verifyAdminPin(p).valid) throw new Error('invalid_admin_pin');
 }
 
 /* ========== Supervisor Registration ========== */
@@ -109,6 +121,7 @@ function registerSupervisor(p) {
     if (col === 'email') return email;
     if (col === 'hasSpot') return true;
     if (col === 'whatsappEnabled') return false;
+    if (col === 'studentsAccepted') return 0;
     return '';
   });
   sheet.appendRow(row);
@@ -197,7 +210,8 @@ function getSupervisor(p) {
         whatsappEnabled: r.whatsappEnabled === true || r.whatsappEnabled === 'TRUE' || r.whatsappEnabled === 'true',
         email: r.email || ''
       },
-      published: r.published === true || r.published === 'TRUE' || r.published === 'true'
+      published: r.published === true || r.published === 'TRUE' || r.published === 'true',
+      studentsAccepted: Number(r.studentsAccepted) || 0
     }
   };
 }
@@ -242,7 +256,8 @@ function saveSupervisor(p) {
     phone: c.phone || '',
     whatsappEnabled: !!c.whatsappEnabled,
     email: c.email || '',
-    published: !!data.published
+    published: !!data.published,
+    studentsAccepted: Math.max(0, Number(data.studentsAccepted) || 0)
   };
 
   for (const [k, v] of Object.entries(updates)) {
@@ -259,6 +274,51 @@ function saveSupervisor(p) {
   }
 
   return { ok: true };
+}
+
+/* ========== Admin Stats ========== */
+
+function getAdminStats(p) {
+  requireAdminPin(p);
+  const rows = readSupervisorRows();
+
+  const expectedStudents = Number(getSetting('expectedStudents')) || 0;
+  let totalAccepted = 0;
+  let publishedCount = 0;
+  let withSpotCount = 0;
+
+  const supervisors = rows.map(r => {
+    const published = r.published === true || r.published === 'TRUE' || r.published === 'true';
+    const hasSpot = r.hasSpot === true || r.hasSpot === 'TRUE' || r.hasSpot === 'true';
+    const accepted = Number(r.studentsAccepted) || 0;
+    if (published) publishedCount++;
+    if (hasSpot) withSpotCount++;
+    totalAccepted += accepted;
+    return {
+      fullName: r.fullName || '(ללא שם)',
+      credential: r.credential || '',
+      published,
+      hasSpot,
+      studentsAccepted: accepted,
+      email: r.email || '',
+      phone: r.phone || ''
+    };
+  });
+
+  // Sort by acceptance count desc, then by name
+  supervisors.sort((a, b) => (b.studentsAccepted - a.studentsAccepted) || a.fullName.localeCompare(b.fullName));
+
+  return {
+    summary: {
+      totalSupervisors: rows.length,
+      publishedCount,
+      withSpotCount,
+      totalAccepted,
+      expectedStudents,
+      remaining: Math.max(0, expectedStudents - totalAccepted)
+    },
+    supervisors
+  };
 }
 
 /* ========== Parameters ========== */
@@ -327,7 +387,9 @@ function getOrCreateSettingsSheet() {
     sheet.setFrozenRows(1);
     sheet.appendRow(['classPin', '2026']);
     sheet.appendRow(['registrationCode', 'CFGUSH26']);
-    sheet.appendRow(['schoolName', 'בית הספר לפסיכותרפיה']);
+    sheet.appendRow(['adminPin', 'cfgush26admin']);
+    sheet.appendRow(['expectedStudents', 25]);
+    sheet.appendRow(['schoolName', 'בית הספר הדיאלוגי']);
     sheet.appendRow(['season', '2026']);
     sheet.appendRow(['appBaseUrl', '']);  // fill with deployed app URL
   }
@@ -345,15 +407,12 @@ function getSetting(key) {
 
 function seedDefaultParameters(sheet) {
   const defaults = [
-    ['orientations', 'פסיכודינמי'],
+    ['orientations', 'דינאמי'],
     ['orientations', 'CBT'],
-    ['orientations', 'EFT'],
-    ['orientations', 'גשטאלט'],
-    ['orientations', 'נרטיבי'],
-    ['orientations', 'אינטגרטיבי'],
-    ['orientations', 'יחסי-אובייקט'],
-    ['orientations', 'מערכתי-משפחתי'],
-    ['orientations', 'JPT'],
+    ['orientations', 'טיפול ממוקד טראומה - SE/EMDR'],
+    ['orientations', 'טיפול זוגי'],
+    ['orientations', 'מיניות'],
+    ['orientations', 'התמכרויות'],
     ['populations', 'מבוגרים'],
     ['populations', 'נוער'],
     ['populations', 'ילדים'],
@@ -419,4 +478,73 @@ function setupSheets() {
   getOrCreateParametersSheet();
   getOrCreateSettingsSheet();
   Logger.log('Setup complete. Sheets: Supervisors, Parameters, Settings');
+}
+
+/**
+ * Run manually after upgrading to v2 (admin view + new orientations).
+ * - Replaces all orientations rows in Parameters with the new 6-item list
+ * - Maps existing supervisor orientations to the new list
+ * - Adds adminPin & expectedStudents to Settings if missing
+ * - Adds studentsAccepted column if missing
+ */
+function migrateToV2() {
+  // 1) Update Parameters sheet — replace orientations rows
+  const params = getOrCreateParametersSheet();
+  const values = params.getDataRange().getValues();
+  const keep = values.filter((row, i) => i === 0 || row[0] !== 'orientations');
+  params.clearContents();
+  params.getRange(1, 1, keep.length, 2).setValues(keep);
+  const newOri = [
+    ['orientations', 'דינאמי'],
+    ['orientations', 'CBT'],
+    ['orientations', 'טיפול ממוקד טראומה - SE/EMDR'],
+    ['orientations', 'טיפול זוגי'],
+    ['orientations', 'מיניות'],
+    ['orientations', 'התמכרויות']
+  ];
+  params.getRange(params.getLastRow() + 1, 1, newOri.length, 2).setValues(newOri);
+
+  // 2) Map existing supervisor data
+  const map = {
+    'פסיכודינמי': 'דינאמי',
+    'יחסי-אובייקט': 'דינאמי',
+    'JPT': 'דינאמי',
+    'גשטאלט': 'דינאמי',
+    'נרטיבי': 'דינאמי',
+    'אינטגרטיבי': 'דינאמי',
+    'מערכתי-משפחתי': 'טיפול זוגי',
+    'EFT': 'טיפול זוגי',
+    'CBT': 'CBT'
+  };
+  const sup = getOrCreateSupervisorsSheet();
+  const sv = sup.getDataRange().getValues();
+  const headers = sv[0];
+  const oCol = headers.indexOf('orientations');
+  if (oCol >= 0) {
+    for (let i = 1; i < sv.length; i++) {
+      const old = sv[i][oCol];
+      if (!old) continue;
+      const items = String(old).split(';').map(x => x.trim()).filter(Boolean);
+      const mapped = Array.from(new Set(items.map(x => map[x] || x).filter(x => map[x] || ['דינאמי','CBT','טיפול ממוקד טראומה - SE/EMDR','טיפול זוגי','מיניות','התמכרויות'].includes(x))));
+      sup.getRange(i + 1, oCol + 1).setValue(mapped.join(';'));
+    }
+  }
+
+  // 3) Settings — add adminPin & expectedStudents if missing
+  const settings = getOrCreateSettingsSheet();
+  const sv2 = settings.getDataRange().getValues();
+  const existingKeys = sv2.slice(1).map(r => r[0]);
+  if (!existingKeys.includes('adminPin')) settings.appendRow(['adminPin', 'cfgush26admin']);
+  if (!existingKeys.includes('expectedStudents')) settings.appendRow(['expectedStudents', 25]);
+
+  // 4) Supervisors — add studentsAccepted column if missing
+  if (!headers.includes('studentsAccepted')) {
+    sup.getRange(1, headers.length + 1).setValue('studentsAccepted');
+    if (sv.length > 1) {
+      const zeros = Array(sv.length - 1).fill([0]);
+      sup.getRange(2, headers.length + 1, sv.length - 1, 1).setValues(zeros);
+    }
+  }
+
+  Logger.log('Migration v2 complete. Settings: adminPin=cfgush26admin, expectedStudents=25 (change as needed)');
 }
