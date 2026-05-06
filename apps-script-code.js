@@ -33,7 +33,8 @@ const SUPERVISOR_COLS = [
   'styleText', 'format', 'area',
   'availability', 'hasSpot',
   'phone', 'whatsappEnabled', 'email',
-  'studentsAccepted'
+  'studentsAccepted',
+  'mailed'   // TRUE after claim/registration email sent
 ];
 
 /* ========== Routing ========== */
@@ -123,6 +124,7 @@ function registerSupervisor(p) {
     if (col === 'hasSpot') return true;
     if (col === 'whatsappEnabled') return false;
     if (col === 'studentsAccepted') return 0;
+    if (col === 'mailed') return true;
     return '';
   });
   sheet.appendRow(row);
@@ -555,6 +557,22 @@ function getOrCreateBulkImportSheet() {
  * Run this manually after filling rows in the BulkImport sheet.
  */
 function bulkImportFromSheet() {
+  return _bulkImportImpl(true);
+}
+
+/**
+ * Same as bulkImportFromSheet but does NOT send the claim email.
+ *
+ * Use when staff wants to fill in profiles on behalf of supervisors before
+ * announcing the directory. Each new supervisor row is created with
+ * mailed=FALSE; later, run sendInvitationsToUnmailed() to send the mails.
+ */
+function bulkImportSilent() {
+  return _bulkImportImpl(false);
+}
+
+function _bulkImportImpl(sendMail) {
+  ensureMailedColumn();
   const sheet = getOrCreateBulkImportSheet();
   const values = sheet.getDataRange().getValues();
   if (values.length < 2) {
@@ -611,6 +629,7 @@ function bulkImportFromSheet() {
         case 'whatsappEnabled': return obj.whatsappEnabled === true || obj.whatsappEnabled === 'TRUE' || obj.whatsappEnabled === 'true';
         case 'email': return String(obj.email).trim().toLowerCase();
         case 'studentsAccepted': return 0;
+        case 'mailed': return !!sendMail;
         default: return '';
       }
     });
@@ -629,12 +648,80 @@ function bulkImportFromSheet() {
     const importedCol = headers.indexOf('imported');
     if (importedCol >= 0) sheet.getRange(i + 1, importedCol + 1).setValue(true);
 
-    // Send claim email
-    sendClaimEmail(String(obj.email).trim(), String(obj.fullName).trim(), baseUrl);
+    // Send claim email if requested
+    if (sendMail) {
+      sendClaimEmail(String(obj.email).trim(), String(obj.fullName).trim(), baseUrl);
+    }
     created++;
   }
 
-  Logger.log(`Bulk import done. Created: ${created}, skipped (already imported / missing fields): ${skipped}`);
+  const mailNote = sendMail ? 'mails sent' : 'NO mails sent (silent mode)';
+  Logger.log(`Bulk import done. Created: ${created}, skipped (already imported / missing fields): ${skipped}. ${mailNote}`);
+}
+
+/**
+ * Send the "your profile is ready" mail to every supervisor whose
+ * mailed column is explicitly FALSE. Marks each as mailed=TRUE on success.
+ *
+ * Rows with mailed='' (empty / pre-existing) are NOT mailed — that's the
+ * safety guard so old supervisors aren't accidentally re-mailed.
+ */
+function sendInvitationsToUnmailed() {
+  ensureMailedColumn();
+  const sheet = getOrCreateSupervisorsSheet();
+  const values = sheet.getDataRange().getValues();
+  if (values.length < 2) { Logger.log('No supervisors.'); return; }
+
+  const headers = values[0];
+  const mailedCol = headers.indexOf('mailed');
+  const emailCol = headers.indexOf('email');
+  const nameCol = headers.indexOf('fullName');
+  if (mailedCol < 0 || emailCol < 0 || nameCol < 0) {
+    Logger.log('Missing required column.');
+    return;
+  }
+
+  const baseUrl = getSetting('appBaseUrl') || '';
+  let sent = 0, skipped = 0;
+
+  for (let i = 1; i < values.length; i++) {
+    const row = values[i];
+    const v = row[mailedCol];
+    // Only mail rows where mailed is explicitly FALSE (not empty/blank)
+    const isFalse = v === false || v === 'FALSE' || v === 'false';
+    if (!isFalse) { skipped++; continue; }
+    const email = String(row[emailCol] || '').trim();
+    const name = String(row[nameCol] || '').trim();
+    if (!email || !name) { skipped++; continue; }
+
+    sendClaimEmail(email, name, baseUrl);
+    sheet.getRange(i + 1, mailedCol + 1).setValue(true);
+    sent++;
+  }
+
+  Logger.log(`Invitations sent: ${sent}, skipped: ${skipped}`);
+}
+
+/**
+ * Idempotent migration helper. Adds the 'mailed' column to the Supervisors
+ * sheet if it doesn't exist, defaulting all existing rows to TRUE
+ * (assume previously created supervisors were already mailed).
+ */
+function ensureMailedColumn() {
+  const sheet = getOrCreateSupervisorsSheet();
+  const lastCol = sheet.getLastColumn();
+  const headers = sheet.getRange(1, 1, 1, lastCol).getValues()[0];
+  if (headers.indexOf('mailed') >= 0) return;
+
+  const newCol = lastCol + 1;
+  sheet.getRange(1, newCol).setValue('mailed');
+  const lastRow = sheet.getLastRow();
+  if (lastRow > 1) {
+    const vals = [];
+    for (let i = 0; i < lastRow - 1; i++) vals.push([true]);
+    sheet.getRange(2, newCol, lastRow - 1, 1).setValues(vals);
+  }
+  Logger.log('Added "mailed" column to Supervisors. Existing rows defaulted to TRUE.');
 }
 
 function sendClaimEmail(toEmail, name, baseUrl) {
@@ -661,6 +748,113 @@ function sendClaimEmail(toEmail, name, baseUrl) {
   } catch (e) {
     // best-effort
   }
+}
+
+/* ========== Seed: Hadialogy directory (run once) ========== */
+
+/**
+ * Pre-fill the BulkImport sheet with the 16 supervisors from the Hadialogy
+ * directory (data scraped from jewishpsychology.org/hadialogy + bogrim_h.php).
+ *
+ * Skips any email that already exists in Supervisors or BulkImport so it's
+ * safe to re-run. After running, review the BulkImport rows in the Sheet,
+ * fix anything wrong, then run bulkImportFromSheet() to send claim emails.
+ *
+ * imported is left FALSE; autoPublish is FALSE — supervisor reviews and
+ * publishes from claim.html.
+ */
+function seedHadialogyDirectory() {
+  const seedRows = [
+    // From hadialogy/#9 (צוות מקצועי + צוות עמיתי הוראה)
+    { fullName: 'ד"ר ברוך כהנא',          email: 'kahanabh@gmail.com',           credential: 'פסיכולוג קליני מומחה' },
+    { fullName: 'ד"ר יפעה מליק-גרינברג',  email: 'yifaor@walla.com',             credential: 'פסיכיאטרית מתמחה' },
+    { fullName: 'ד"ר קארן לרנר',          email: 'karenlmt5@gmail.com',          credential: 'פסיכולוגית קלינית' },
+    { fullName: 'איתן כלפה',              email: 'eitan.calfa@mail.huji.ac.il',  credential: 'פסיכולוג קליני מומחה - מדריך' },
+    { fullName: 'גבריאל פרץ',             email: 'gabrielperetz@gmail.com',      credential: 'פסיכולוג קליני מדריך' },
+    { fullName: 'נעמי אשואל',             email: 'naomiashwal7@gmail.com',       credential: 'פסיכולוגית קלינית, חינוכית ומדריכה' },
+    { fullName: 'ד"ר חגי סרי',            email: 'hagai.s@meuhedet.co.il',       credential: 'פסיכולוג קליני מומחה' },
+    { fullName: 'ד"ר נילי פויירשטיין',    email: 'fnili175@gmail.com',           credential: 'פסיכולוגית ועו"ס קלינית' },
+    { fullName: 'חנה יאיר בוריה',         email: 'Ybhana@gmail.com',             credential: 'עו"ס פסיכותרפיסטית, מדריכה בטיפול זוגי' },
+    { fullName: 'נועם לב',                email: 'noamlow@gmail.com',            credential: 'פסיכולוג קליני מומחה' },
+    { fullName: 'אבי יעקובסון',           email: 'Aviyacobson@gmail.com',        credential: 'פסיכולוג קליני מומחה' },
+    { fullName: 'בנימין גולדנהירש',       email: 'benjaminfranklin1@gmail.com',  credential: 'פסיכולוג קליני וחינוכי – מדריך' },
+    // From bogrim_h.php (no photo, but we have phone + area + role)
+    { fullName: 'נריה קרין',              email: 'neriakarin@gmail.com',         credential: 'עו"ס קלינית, פסיכואנליטיקאית', orientations: 'דינאמי', phone: '0507724704', area: 'שרון' },
+    { fullName: 'אפרת ברום',              email: 'efratbrom@gmail.com',          credential: '',                            phone: '0527906319', area: 'שילה' },
+    // Not found on either site — name+email only, supervisor fills the rest in claim
+    { fullName: 'טליק לרנר',              email: 'taliklerner@gmail.com' },
+    { fullName: 'דני קורנבליט',           email: 'donnyk23@gmail.com' }
+  ];
+
+  const bulkSheet = getOrCreateBulkImportSheet();
+  const supSheet = getOrCreateSupervisorsSheet();
+
+  // Collect existing emails (lowercased) from both sheets to skip dupes
+  const existingEmails = new Set();
+  const supValues = supSheet.getDataRange().getValues();
+  if (supValues.length > 1) {
+    const supHeaders = supValues[0];
+    const emailCol = supHeaders.indexOf('email');
+    if (emailCol >= 0) {
+      for (let i = 1; i < supValues.length; i++) {
+        const v = String(supValues[i][emailCol] || '').trim().toLowerCase();
+        if (v) existingEmails.add(v);
+      }
+    }
+  }
+  const bulkValues = bulkSheet.getDataRange().getValues();
+  if (bulkValues.length > 1) {
+    const bulkHeaders = bulkValues[0];
+    const emailCol = bulkHeaders.indexOf('email');
+    if (emailCol >= 0) {
+      for (let i = 1; i < bulkValues.length; i++) {
+        const v = String(bulkValues[i][emailCol] || '').trim().toLowerCase();
+        if (v) existingEmails.add(v);
+      }
+    }
+  }
+
+  let added = 0;
+  let skipped = 0;
+  const newRows = [];
+  for (const r of seedRows) {
+    const e = String(r.email || '').trim().toLowerCase();
+    if (!e || existingEmails.has(e)) { skipped++; continue; }
+    existingEmails.add(e);
+    newRows.push(BULK_COLS.map(col => {
+      switch (col) {
+        case 'imported':        return false;
+        case 'fullName':        return r.fullName || '';
+        case 'email':           return r.email || '';
+        case 'credential':      return r.credential || '';
+        case 'yearsSupervising':return '';
+        case 'orientations':    return r.orientations || '';
+        case 'populations':     return r.populations || '';
+        case 'specialties':     return r.specialties || '';
+        case 'styleText':       return r.styleText || '';
+        case 'format':          return r.format || '';
+        case 'area':            return r.area || '';
+        case 'phone':           return r.phone || '';
+        case 'whatsappEnabled': return false;
+        case 'hasSpot':         return true;
+        case 'autoPublish':     return false;
+        default:                return '';
+      }
+    }));
+    added++;
+  }
+
+  if (newRows.length) {
+    const startRow = bulkSheet.getLastRow() + 1;
+    bulkSheet.getRange(startRow, 1, newRows.length, BULK_COLS.length).setValues(newRows);
+    // Force phone column to text so leading zeros survive
+    const phoneCol = BULK_COLS.indexOf('phone');
+    if (phoneCol >= 0) {
+      bulkSheet.getRange(startRow, phoneCol + 1, newRows.length, 1).setNumberFormat('@');
+    }
+  }
+
+  Logger.log('seedHadialogyDirectory: added ' + added + ', skipped (dupe/empty): ' + skipped);
 }
 
 /* ========== Setup (run manually once) ========== */
