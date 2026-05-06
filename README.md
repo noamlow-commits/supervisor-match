@@ -49,16 +49,15 @@ Settings → `appBaseUrl` → `https://noamlow-commits.github.io/supervisor-matc
 ## ייבוא בכמות (Bulk Import) — שני שלבים
 
 ### Phase 1: יצירה שקטה
-1. ב-Sheet → טאב **BulkImport** — מלא/י שורה לכל מדריך (או הרץ/י `seedHadialogyDirectory` שמכין את 16 המדריכים מאתר בית הספר)
+1. ב-Sheet → טאב **BulkImport** — מלא/י שורה לכל מדריך (או הרץ/י `seedHadialogyDirectory`)
 2. הרץ/י `bulkImportSilent()` ב-Apps Script
 3. נוצרים פרופילים ב-Supervisors עם `mailed=FALSE`. **לא נשלחים מיילים עדיין**
 
 ### Phase 2: השלמה ידנית (אופציונלית)
-לפני שמודיעים למדריכים, אפשר למלא ידנית את הפרופיל של המדריכים המבוגרים בטאב Supervisors. כך הם נכנסים לפרופיל מוכן ולא לטופס ריק.
+לפני שמודיעים למדריכים, אפשר למלא ידנית את הפרופיל של המדריכים המבוגרים בטאב Supervisors.
 
 ### Phase 3: שליחת הזמנות
 הרץ/י `sendInvitationsToUnmailed()` — שולח מייל רק לאלה ש-`mailed=FALSE`, ומסמן TRUE.
-**אפשר להריץ פעמים רבות**: רק שורות עם `mailed=FALSE` יקבלו מייל.
 
 ### עמודות BulkImport
 | עמודה | חובה | דוגמה |
@@ -70,7 +69,6 @@ Settings → `appBaseUrl` → `https://noamlow-commits.github.io/supervisor-matc
 | yearsSupervising | מומלץ | 15 |
 | orientations | מומלץ | דינאמי;CBT |
 | populations | מומלץ | מבוגרים;נוער |
-| specialties | מומלץ | טראומה;חרדה ודיכאון |
 | styleText | מומלץ | תיאור הסגנון (50-400 תווים) |
 | format | מומלץ | היברידי |
 | area | מומלץ | ירושלים |
@@ -83,9 +81,9 @@ Settings → `appBaseUrl` → `https://noamlow-commits.github.io/supervisor-matc
 
 `migrateToV2()` עושה:
 - מעדכן רשימת `orientations` ל-6 הסוגים החדשים
-- ממפה אוריינטציות ישנות (פסיכודינמי → דינאמי וכו׳)
+- ממפה אוריינטציות ישנות (פסיכודינמי → דינאמי)
 - מוסיף `adminPin`, `expectedStudents` ל-Settings
-- מוסיף עמודות `studentsAccepted`, `mailed` ל-Supervisors (רשומות קיימות מקבלות `mailed=TRUE` אוטומטית כדי למנוע ספאם חוזר)
+- מוסיף עמודות `studentsAccepted`, `mailed` ל-Supervisors
 - יוצר טאב `BulkImport`
 
 **⚠ אחרי כל שינוי קוד** — חובה לפרוס מחדש: Deploy → Manage deployments → ✏ → New version → Deploy.
@@ -116,17 +114,17 @@ Settings → `appBaseUrl` → `https://noamlow-commits.github.io/supervisor-matc
 
 ## עריכת פרמטרים בלי קוד
 טאב Parameters ב-Sheet — `שדה | אפשרות`. שינויים נכנסים בריענון.
-פרמטרים: orientations, populations, specialties, formats, areas
+פרמטרים: orientations, populations, formats, areas
 
 ## שדות בפרופיל מדריך
 
-### חובה (11)
+### חובה (10)
 1. שם מלא  2. תואר/הסמכה  3. שנות הדרכה
 4. **סוגי טיפול:** דינאמי / CBT / טיפול ממוקד טראומה - SE/EMDR / טיפול זוגי / מיניות / התמכרויות
-5. אוכלוסיות  6. תחומי התמחות (עד 5)
-7. על הסגנון (50-400 תווים)
-8. פורמט  9. אזור (אם רלוונטי)  10. זמינות שבועית
-11. סטטוס מקומות
+5. אוכלוסיות
+6. על הסגנון (50-400 תווים)
+7. פורמט  8. אזור (אם רלוונטי)  9. זמינות שבועית
+10. סטטוס מקומות
 
 ### דרכי קשר
 טלפון נייד + checkbox WhatsApp / מייל
@@ -136,7 +134,7 @@ Settings → `appBaseUrl` → `https://noamlow-commits.github.io/supervisor-matc
 
 ## באגים ידועים
 
-**Google Sheets ממיר טלפון למספר ומאבד אפס מוביל** — פתרון: `setNumberFormat('@')` לפני שמירה. **חובה לפרוס מחדש לאחר שינוי קוד.**
+**Google Sheets ממיר טלפון למספר ומאבד אפס מוביל** — פתרון: `setNumberFormat('@')` לפני שמירה.
 
 **"Could not establish connection"** — שגיאות מהרחבות דפדפן, לא קשורות.
 
@@ -150,7 +148,7 @@ HTML/CSS/JS סטטי + Google Apps Script + Google Sheets + GitHub Pages.
 - אין פופולריות (תלמידים לא רואים מונים, מדריכים לא רואים אחד את השני)
 - מובייל-first
 - שלוש דרכי כניסה למדריכים, מותאמות לרמות נוחות שונות
-- ייבוא דו-שלבי (יצירה → השלמה → הזמנה) לבקרה מלאה של הצוות
+- ייבוא דו-שלבי (יצירה → השלמה → הזמנה)
 
 ## דמו vs חי
 - דמו (אין URL): localStorage + מדריכי דמו, תווית "דמו"
@@ -160,4 +158,5 @@ HTML/CSS/JS סטטי + Google Apps Script + Google Sheets + GitHub Pages.
 - **v1** — דירקטוריון בסיסי + הרשמה עצמית
 - **v2** — דשבורד הנהלה, סוגי טיפול מפושטים, studentsAccepted, מיגרציה
 - **v2.1** — claim.html + bulk import
-- **v2.2** — seedHadialogyDirectory + ייבוא דו-שלבי שקט (mailed column)
+- **v2.2** — seedHadialogyDirectory + ייבוא דו-שלבי שקט
+- **v2.3** — הסרת "תחומי התמחות" מהממשק (לא רלוונטי להדרכה דינאמית), תיקון באג הכפלת צ׳יפים
