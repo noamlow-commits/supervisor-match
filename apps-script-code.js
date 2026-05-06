@@ -57,6 +57,7 @@ function handleRequest(e) {
       case 'verifyRegistrationCode': result = verifyRegistrationCode(params); break;
       case 'verifyAdminPin':         result = verifyAdminPin(params); break;
       case 'registerSupervisor':     result = registerSupervisor(params); break;
+      case 'claimSupervisor':        result = claimSupervisor(params); break;
       case 'getSupervisors':         result = getSupervisors(params); break;
       case 'getSupervisor':          result = getSupervisor(params); break;
       case 'saveSupervisor':         result = saveSupervisor(params); break;
@@ -130,6 +131,29 @@ function registerSupervisor(p) {
   sendRegistrationEmail(email, name, personalUrl);
 
   return { token, personalUrl };
+}
+
+/* ========== Supervisor Claim (for pre-imported supervisors) ========== */
+
+function claimSupervisor(p) {
+  const email = String(p.email || '').trim().toLowerCase();
+  const name = String(p.name || '').trim();
+  if (!email || !name) return { error: 'missing_fields' };
+
+  const rows = readSupervisorRows();
+  const match = rows.find(r => String(r.email || '').trim().toLowerCase() === email);
+
+  if (!match) return { error: 'not_found' };
+
+  // Loose name match: case-insensitive substring in either direction
+  const sheetName = String(match.fullName || '').trim();
+  const a = name.toLowerCase().replace(/["׳״]/g, '');
+  const b = sheetName.toLowerCase().replace(/["׳״]/g, '');
+  if (a !== b && !a.includes(b) && !b.includes(a)) {
+    return { error: 'name_mismatch' };
+  }
+
+  return { token: match.token, fullName: match.fullName };
 }
 
 function sendRegistrationEmail(toEmail, name, personalUrl) {
@@ -471,13 +495,182 @@ function escapeHtml(s) {
   return String(s).replace(/[&<>"']/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c]));
 }
 
+/* ========== Bulk Import (for older supervisors who can't fill the form themselves) ========== */
+
+const TAB_BULK_IMPORT = 'BulkImport';
+const BULK_COLS = [
+  'imported',          // TRUE after script processed this row
+  'fullName',          // required
+  'email',             // required (used to match in claim flow)
+  'credential',
+  'yearsSupervising',
+  'orientations',      // semicolon-separated, e.g. "דינאמי;CBT"
+  'populations',       // semicolon-separated
+  'specialties',       // semicolon-separated
+  'styleText',
+  'format',            // "פרונטלי" / "מקוון" / "היברידי"
+  'area',
+  'phone',
+  'whatsappEnabled',   // TRUE / FALSE
+  'hasSpot',           // TRUE / FALSE (default TRUE)
+  'autoPublish'        // TRUE = mark as published automatically; FALSE = save as draft
+];
+
+function getOrCreateBulkImportSheet() {
+  const ss = SpreadsheetApp.getActive();
+  let sheet = ss.getSheetByName(TAB_BULK_IMPORT);
+  if (!sheet) {
+    sheet = ss.insertSheet(TAB_BULK_IMPORT);
+    sheet.appendRow(BULK_COLS);
+    sheet.setFrozenRows(1);
+    // Sample row for guidance (commented out fields)
+    sheet.appendRow([
+      false,
+      'שם מלא לדוגמה — מחק שורה זו',
+      'example@example.com',
+      'פסיכולוג קליני, MA',
+      15,
+      'דינאמי;CBT',
+      'מבוגרים;נוער',
+      'טראומה;חרדה ודיכאון',
+      'תיאור קצר של הסגנון. 50 תווים מינימום.',
+      'היברידי',
+      'ירושלים',
+      '0501234567',
+      true,
+      true,
+      false
+    ]);
+    sheet.setColumnWidths(1, BULK_COLS.length, 140);
+    Logger.log('Created BulkImport sheet. Fill rows and run bulkImportFromSheet().');
+  }
+  return sheet;
+}
+
+/**
+ * Read all unimported rows from the BulkImport sheet, create supervisor records,
+ * and mark each row as imported. Sends a "your profile is ready" email to each
+ * supervisor with their personal claim link.
+ *
+ * Run this manually after filling rows in the BulkImport sheet.
+ */
+function bulkImportFromSheet() {
+  const sheet = getOrCreateBulkImportSheet();
+  const values = sheet.getDataRange().getValues();
+  if (values.length < 2) {
+    Logger.log('BulkImport sheet is empty.');
+    return;
+  }
+  const headers = values[0];
+  const supSheet = getOrCreateSupervisorsSheet();
+  const supHeaders = supSheet.getRange(1, 1, 1, supSheet.getLastColumn()).getValues()[0];
+  const baseUrl = getSetting('appBaseUrl') || '';
+
+  let created = 0;
+  let skipped = 0;
+
+  for (let i = 1; i < values.length; i++) {
+    const row = values[i];
+    const obj = {};
+    headers.forEach((h, j) => { obj[h] = row[j]; });
+
+    if (obj.imported === true || obj.imported === 'TRUE' || obj.imported === 'true') {
+      skipped++;
+      continue;
+    }
+    if (!obj.fullName || !obj.email) {
+      skipped++;
+      continue;
+    }
+
+    const token = generateToken();
+    const now = new Date().toISOString();
+
+    const supRow = supHeaders.map(col => {
+      switch (col) {
+        case 'token': return token;
+        case 'created': return now;
+        case 'updated': return now;
+        case 'published': return obj.autoPublish === true || obj.autoPublish === 'TRUE' || obj.autoPublish === 'true';
+        case 'fullName': return String(obj.fullName).trim();
+        case 'credential': return obj.credential || '';
+        case 'yearsSupervising': return Number(obj.yearsSupervising) || 0;
+        case 'orientations': return obj.orientations || '';
+        case 'populations': return obj.populations || '';
+        case 'specialties': return obj.specialties || '';
+        case 'styleText': return obj.styleText || '';
+        case 'format': return obj.format || '';
+        case 'area': return obj.area || '';
+        case 'availability': return '{}';
+        case 'hasSpot': {
+          const v = obj.hasSpot;
+          if (v === '' || v == null) return true;
+          return v === true || v === 'TRUE' || v === 'true';
+        }
+        case 'phone': return String(obj.phone || '').trim();
+        case 'whatsappEnabled': return obj.whatsappEnabled === true || obj.whatsappEnabled === 'TRUE' || obj.whatsappEnabled === 'true';
+        case 'email': return String(obj.email).trim().toLowerCase();
+        case 'studentsAccepted': return 0;
+        default: return '';
+      }
+    });
+    supSheet.appendRow(supRow);
+
+    // Re-set phone column to text format on the just-appended row
+    const newRowIdx = supSheet.getLastRow();
+    const phoneCol = supHeaders.indexOf('phone');
+    if (phoneCol >= 0) {
+      const cell = supSheet.getRange(newRowIdx, phoneCol + 1);
+      cell.setNumberFormat('@');
+      cell.setValue(String(obj.phone || '').trim());
+    }
+
+    // Mark BulkImport row as imported
+    const importedCol = headers.indexOf('imported');
+    if (importedCol >= 0) sheet.getRange(i + 1, importedCol + 1).setValue(true);
+
+    // Send claim email
+    sendClaimEmail(String(obj.email).trim(), String(obj.fullName).trim(), baseUrl);
+    created++;
+  }
+
+  Logger.log(`Bulk import done. Created: ${created}, skipped (already imported / missing fields): ${skipped}`);
+}
+
+function sendClaimEmail(toEmail, name, baseUrl) {
+  try {
+    const schoolName = getSetting('schoolName') || 'בית הספר הדיאלוגי';
+    const claimUrl = (baseUrl || '') + 'claim.html';
+    MailApp.sendEmail({
+      to: toEmail,
+      subject: 'הפרופיל שלך מוכן — ' + schoolName,
+      htmlBody:
+        '<div dir="rtl" style="font-family:Arial,sans-serif;font-size:15px;line-height:1.7">' +
+        '<p>שלום ' + escapeHtml(name) + ',</p>' +
+        '<p>צוות ' + escapeHtml(schoolName) + ' הכין עבורך פרופיל מוכן במאגר המדריכים.</p>' +
+        '<p><b>איך נכנסים לערוך:</b></p>' +
+        '<ol>' +
+        '<li>פתח/י את הקישור: <a href="' + claimUrl + '">' + claimUrl + '</a></li>' +
+        '<li>הזן/י את השם המלא והמייל שלך — זה המייל הזה</li>' +
+        '<li>תיכנס/י לפרופיל ותוכל/י לעבור עליו, לתקן ולפרסם</li>' +
+        '</ol>' +
+        '<p>אין צורך בקוד או בסיסמה — השם והמייל שלך הם המפתח.</p>' +
+        '<p>בהצלחה,<br>צוות בית הספר</p>' +
+        '</div>'
+    });
+  } catch (e) {
+    // best-effort
+  }
+}
+
 /* ========== Setup (run manually once) ========== */
 
 function setupSheets() {
   getOrCreateSupervisorsSheet();
   getOrCreateParametersSheet();
   getOrCreateSettingsSheet();
-  Logger.log('Setup complete. Sheets: Supervisors, Parameters, Settings');
+  getOrCreateBulkImportSheet();
+  Logger.log('Setup complete. Sheets: Supervisors, Parameters, Settings, BulkImport');
 }
 
 /**
@@ -546,5 +739,8 @@ function migrateToV2() {
     }
   }
 
-  Logger.log('Migration v2 complete. Settings: adminPin=cfgush26admin, expectedStudents=25 (change as needed)');
+  // 5) BulkImport tab
+  getOrCreateBulkImportSheet();
+
+  Logger.log('Migration v2 complete. Settings: adminPin=cfgush26admin, expectedStudents=25 (change as needed). BulkImport tab created.');
 }

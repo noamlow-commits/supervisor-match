@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>כניסה לפרופיל מוכן — בית הספר הדיאלוגי</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Assistant:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#f7f5f0; --surface:#ffffff; --ink:#1f2937; --ink-soft:#4b5563; --muted:#6b7280;
+    --border:#e5e7eb; --line:#eef0ed; --accent:#5b8a72; --accent-soft:#e8efe9; --accent-strong:#476e58;
+    --shadow: 0 1px 2px rgba(15,23,42,.04), 0 4px 14px rgba(15,23,42,.06);
+  }
+  *,*::before,*::after{box-sizing:border-box}
+  html,body{margin:0;padding:0}
+  body{
+    font-family:'Assistant',sans-serif;background:var(--bg);color:var(--ink);
+    font-size:16px;line-height:1.5;-webkit-font-smoothing:antialiased;
+    min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px;
+  }
+  button{font-family:inherit;font-size:inherit;cursor:pointer;border:0;background:none}
+  input{font-family:inherit;font-size:inherit}
+
+  .card{
+    background:var(--surface);border-radius:18px;padding:32px 28px;
+    box-shadow:var(--shadow);max-width:460px;width:100%;
+  }
+  .brand-logo{
+    width:64px;height:64px;border-radius:16px;margin-bottom:16px;
+    object-fit:contain;background:white;padding:3px;
+    box-shadow:0 1px 4px rgba(15,23,42,.08);
+  }
+  h1{font-size:22px;margin:0 0 6px;font-weight:600}
+  .lead{margin:0 0 22px;color:var(--ink-soft);font-size:15px;line-height:1.6}
+
+  .field{margin-bottom:14px}
+  .field-label{display:block;font-size:14px;font-weight:600;margin-bottom:6px;color:var(--ink)}
+  .input{
+    width:100%;padding:13px 16px;font-size:16px;color:var(--ink);
+    background:var(--bg);border:1.5px solid transparent;border-radius:12px;outline:none;
+    transition:border-color .15s, background .15s;
+  }
+  .input:focus{border-color:var(--accent);background:var(--surface)}
+
+  .err{color:#b91c1c;font-size:13.5px;margin-top:8px;min-height:18px}
+
+  .btn{
+    width:100%;padding:15px;font-size:16px;font-weight:600;border-radius:12px;
+    cursor:pointer;transition:all .15s;text-align:center;background:var(--accent);
+    color:white;margin-top:14px;
+  }
+  .btn:hover{background:var(--accent-strong)}
+  .btn:disabled{background:var(--border);color:var(--muted);cursor:not-allowed}
+
+  .info{
+    background:var(--accent-soft);border-radius:12px;padding:14px 16px;
+    font-size:13.5px;color:var(--accent-strong);line-height:1.6;margin-bottom:18px;
+  }
+  .info b{font-weight:600}
+
+  .alt{
+    text-align:center;font-size:13.5px;color:var(--muted);margin-top:18px;padding-top:18px;
+    border-top:1px solid var(--line);
+  }
+  .alt a{color:var(--accent);text-decoration:none;font-weight:600}
+  .alt a:hover{text-decoration:underline}
+
+  .success{display:none;text-align:center}
+  .success.show{display:block}
+  .success .check{
+    width:64px;height:64px;border-radius:50%;background:var(--accent-soft);
+    color:var(--accent);font-size:32px;display:flex;align-items:center;justify-content:center;
+    margin:0 auto 14px;
+  }
+  .success h2{margin:0 0 6px;font-size:20px;font-weight:600}
+  .success p{margin:0;color:var(--ink-soft)}
+  .spinner{display:inline-block;width:14px;height:14px;border:2px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin .7s linear infinite;vertical-align:middle;margin-inline-start:6px}
+  @keyframes spin{to{transform:rotate(360deg)}}
+
+  .footer-rotenberg{
+    position:fixed;bottom:16px;left:50%;transform:translateX(-50%);
+    color:var(--muted);font-size:12.5px;
+    display:flex;align-items:center;justify-content:center;gap:8px;z-index:5;pointer-events:none;
+  }
+  .footer-rotenberg img{pointer-events:auto;height:22px;opacity:.8}
+  .demo-badge{background:#fef3c7;color:#854d0e;font-size:11px;padding:3px 9px;border-radius:8px;font-weight:600;margin-inline-start:6px;display:none}
+</style>
+</head>
+<body>
+
+<div class="card">
+  <!-- Form -->
+  <div id="formView">
+    <img src="logo-school.webp" alt="הדיאלוגי" class="brand-logo">
+    <h1>כניסה לפרופיל מוכן <span class="demo-badge" id="demoBadge">דמו</span></h1>
+    <p class="lead">קיבלת מהצוות הודעה שהפרופיל שלך מוכן לעריכה? הזן/י את השם והמייל שלך כפי שמסרת, ותועבר/י ישר לפרופיל.</p>
+
+    <div class="info">
+      <b>למה אין סיסמה?</b> הפרופיל שלך כבר מוכן במערכת. השם והמייל שלך הם המפתח לכניסה.
+    </div>
+
+    <div class="field">
+      <label class="field-label" for="name">שם מלא</label>
+      <input class="input" id="name" type="text" placeholder="ד״ר ישראל ישראלי" autocomplete="name">
+    </div>
+
+    <div class="field">
+      <label class="field-label" for="email">דואר אלקטרוני</label>
+      <input class="input" id="email" type="email" placeholder="example@example.com" autocomplete="email">
+    </div>
+
+    <div class="err" id="err"></div>
+    <button class="btn" id="submitBtn">היכנס/י לפרופיל שלי</button>
+
+    <div class="alt">
+      אין לי פרופיל מוכן —<br>
+      <a href="register.html">להרשמה כמדריך/ה חדש/ה</a>
+    </div>
+  </div>
+
+  <!-- Success -->
+  <div id="successView" class="success">
+    <div class="check">✓</div>
+    <h2 id="welcomeName">ברוך/ה הבא/ה</h2>
+    <p>מעביר/ה אותך לפרופיל שלך... <span class="spinner"></span></p>
+  </div>
+</div>
+
+<div class="footer-rotenberg">
+  <span>מבית</span>
+  <img src="logo-rotenberg.webp" alt="מכון רוטנברג">
+</div>
+
+<script>
+const APPS_SCRIPT_URL = localStorage.getItem('apps-script-url') || '';
+const LIVE = !!APPS_SCRIPT_URL;
+
+if(!LIVE) document.getElementById('demoBadge').style.display='inline-block';
+
+async function apiCall(action, params){
+  if(!LIVE) return null;
+  try{
+    const url = new URL(APPS_SCRIPT_URL);
+    url.searchParams.set('action', action);
+    for(const [k,v] of Object.entries(params||{})){
+      url.searchParams.set(k, v == null ? '' : v);
+    }
+    const ctrl = new AbortController();
+    const t = setTimeout(()=>ctrl.abort(), 12000);
+    const r = await fetch(url.toString(), {signal: ctrl.signal});
+    clearTimeout(t);
+    return await r.json();
+  }catch(e){ console.warn('API fail:', action, e); return null; }
+}
+
+document.getElementById('submitBtn').addEventListener('click', submitClaim);
+document.getElementById('email').addEventListener('keydown', e=>{ if(e.key==='Enter') submitClaim(); });
+
+async function submitClaim(){
+  const name = document.getElementById('name').value.trim();
+  const email = document.getElementById('email').value.trim();
+  const err = document.getElementById('err');
+  const btn = document.getElementById('submitBtn');
+
+  err.textContent = '';
+  if(!name){ err.textContent = 'נא למלא שם מלא'; return; }
+  if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)){ err.textContent = 'כתובת מייל לא תקינה'; return; }
+
+  btn.disabled = true; btn.textContent = 'בודק...';
+
+  if(!LIVE){
+    // Demo mode — fake successful claim
+    setTimeout(()=>showSuccess(name, 'demo-token'), 600);
+    return;
+  }
+
+  const r = await apiCall('claimSupervisor', {email, name});
+  btn.disabled = false; btn.textContent = 'היכנס/י לפרופיל שלי';
+
+  if(!r){ err.textContent = 'שגיאת תקשורת. נסה/י שוב'; return; }
+  if(r.error === 'not_found'){
+    err.textContent = 'לא נמצא פרופיל עם המייל הזה. ודא/י שכתבת אותו בדיוק כפי שמסרת לצוות, או פנה/י לרכז/ת.';
+    return;
+  }
+  if(r.error === 'name_mismatch'){
+    err.textContent = 'המייל קיים, אבל השם לא תואם. ודא/י שאת/ה הבעלים של המייל הזה ושכתבת/ת את השם כפי שמסרת.';
+    return;
+  }
+  if(r.error){
+    err.textContent = 'שגיאה: ' + (r.message || r.error);
+    return;
+  }
+  if(r.token){
+    showSuccess(r.fullName || name, r.token);
+  }
+}
+
+function showSuccess(name, token){
+  document.getElementById('formView').style.display = 'none';
+  const s = document.getElementById('successView');
+  s.classList.add('show');
+  document.getElementById('welcomeName').textContent = `ברוך/ה הבא/ה ${name}`;
+  // Save token & redirect
+  if(token && token !== 'demo-token'){
+    localStorage.setItem('supervisor-token', token);
+  }
+  setTimeout(()=>{
+    location.href = `supervisor.html?token=${token}`;
+  }, 1200);
+}
+
+// Settings cog
+const cog = document.createElement('button');
+cog.textContent = '⚙'; cog.title = 'הגדרות';
+cog.style.cssText = 'position:fixed;bottom:14px;right:14px;width:32px;height:32px;border-radius:50%;background:#fff;box-shadow:0 1px 6px rgba(0,0,0,.1);font-size:14px;color:#999;opacity:.5;border:0;cursor:pointer;z-index:5';
+cog.addEventListener('click', ()=>{
+  const cur = localStorage.getItem('apps-script-url') || '';
+  const url = prompt('כתובת Apps Script (השאר/י ריק לדמו):', cur);
+  if(url === null) return;
+  if(url.trim()) localStorage.setItem('apps-script-url', url.trim());
+  else localStorage.removeItem('apps-script-url');
+  location.reload();
+});
+document.body.appendChild(cog);
+</script>
+</body>
+</html>
