@@ -299,10 +299,6 @@
         <div class="chip-row" data-filter="populations"></div>
       </div>
       <div class="filter-group">
-        <div class="filter-group-label">תחום התמחות</div>
-        <div class="chip-row" data-filter="specialties"></div>
-      </div>
-      <div class="filter-group">
         <div class="filter-group-label">פורמט</div>
         <div class="chip-row" data-filter="format"></div>
       </div>
@@ -447,7 +443,7 @@ let SUPERVISORS = [
 
 /* ===== State ===== */
 let activeFilters = {
-  orientations:new Set(), populations:new Set(), specialties:new Set(),
+  orientations:new Set(), populations:new Set(),
   format:new Set(), area:new Set(), hasSpot:new Set()
 };
 
@@ -526,9 +522,9 @@ async function init(){
     ]);
     if(sup && sup.supervisors) SUPERVISORS = sup.supervisors;
     if(par && par.parameters){
-      // backend returns: orientations, populations, specialties, formats, areas
+      // backend returns: orientations, populations, formats, areas (specialties removed from UI)
       // days/timeOfDay stay client-side
-      ['orientations','populations','specialties','formats','areas'].forEach(k=>{
+      ['orientations','populations','formats','areas'].forEach(k=>{
         if(par.parameters[k]) PARAMS[k] = par.parameters[k];
       });
     }
@@ -544,13 +540,14 @@ function buildFilters(){
   const groups = {
     orientations: PARAMS.orientations,
     populations: PARAMS.populations,
-    specialties: PARAMS.specialties,
     format: PARAMS.formats,
     area: PARAMS.areas,
     hasSpot: ['יש מקום פנוי']
   };
   for(const [key, items] of Object.entries(groups)){
     const row = document.querySelector(`[data-filter="${key}"]`);
+    if(!row) continue;
+    row.innerHTML = '';  // idempotent: clear existing chips before re-adding
     items.forEach(item=>{
       const chip = document.createElement('button');
       chip.className = 'chip';
@@ -584,7 +581,6 @@ function matchesFilters(s){
   const f = activeFilters;
   if(f.orientations.size && !s.orientations.some(o=>f.orientations.has(o))) return false;
   if(f.populations.size && !s.populations.some(p=>f.populations.has(p))) return false;
-  if(f.specialties.size && !s.specialties.some(sp=>f.specialties.has(sp))) return false;
   if(f.format.size && !f.format.has(s.format)) return false;
   if(f.area.size && !(s.area && f.area.has(s.area))) return false;
   if(f.hasSpot.size && !s.hasSpot) return false;
@@ -693,11 +689,6 @@ function openModal(s){
     <div class="field">
       <div class="field-label">אוכלוסיות</div>
       <div class="tags">${s.populations.map(p=>`<span class="tag pop">${p}</span>`).join('')}</div>
-    </div>
-
-    <div class="field">
-      <div class="field-label">תחומי התמחות</div>
-      <div class="tags">${s.specialties.map(sp=>`<span class="tag">${sp}</span>`).join('')}</div>
     </div>
 
     <div class="field">

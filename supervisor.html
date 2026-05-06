@@ -280,12 +280,6 @@
     </div>
 
     <div class="field">
-      <label class="field-label">תחומי התמחות <span class="required">*</span></label>
-      <p class="field-help">בחר/י עד 5 תחומים שבהם יש לך מומחיות מובהקת.</p>
-      <div class="chips" id="chips-specialties"></div>
-    </div>
-
-    <div class="field">
       <label class="field-label" for="styleText">על הסגנון שלי <span class="required">*</span></label>
       <p class="field-help">2-3 משפטים על הגישה שלך להדרכה. זה המקום שתלמיד באמת קורא.</p>
       <textarea class="textarea" id="styleText" maxlength="400" placeholder="אני מאמינה שהדרכה טובה היא מרחב משותף לחקירה..."></textarea>
@@ -414,7 +408,7 @@ async function apiCall(action, params){
 
 let profile = {
   fullName:'', credential:'', yearsSupervising:'',
-  orientations:[], populations:[], specialties:[],
+  orientations:[], populations:[],
   format:'', area:'',
   availability:{}, hasSpot:true, styleText:'',
   contact:{phone:'', whatsappEnabled:false, email:''},
@@ -566,7 +560,7 @@ async function init(){
   if(LIVE){
     const par = await apiCall('getParameters', {pin: localStorage.getItem('supervisor-match-pin') || ''});
     if(par && par.parameters){
-      ['orientations','populations','specialties','formats','areas'].forEach(k=>{
+      ['orientations','populations','formats','areas'].forEach(k=>{
         if(par.parameters[k]) PARAMS[k] = par.parameters[k];
       });
     }
@@ -574,7 +568,6 @@ async function init(){
 
   buildChipGroup('chips-orientations', PARAMS.orientations, 'orientations');
   buildChipGroup('chips-populations', PARAMS.populations, 'populations');
-  buildChipGroup('chips-specialties', PARAMS.specialties, 'specialties', 5);
   buildRadioGroup('radio-format', PARAMS.formats, 'format', onFormatChange);
   buildRadioGroup('radio-area', PARAMS.areas, 'area');
   buildAvailGrid();
@@ -627,7 +620,7 @@ function restoreUI(){
   document.getElementById('waCheck').checked = !!profile.contact.whatsappEnabled;
   document.getElementById('email').value = profile.contact.email || '';
 
-  ['orientations','populations','specialties'].forEach(key=>{
+  ['orientations','populations'].forEach(key=>{
     document.querySelectorAll(`#chips-${key} .chip`).forEach(chip=>{
       if(profile[key].includes(chip.textContent)) chip.classList.add('active');
     });
@@ -670,9 +663,8 @@ function validate(){
   if(!profile.fullName) errors.push('שם מלא');
   if(!profile.credential) errors.push('תואר / הסמכה');
   if(!profile.yearsSupervising) errors.push('שנות ניסיון');
-  if(!profile.orientations.length) errors.push('אוריינטציה');
+  if(!profile.orientations.length) errors.push('סוגי טיפול');
   if(!profile.populations.length) errors.push('אוכלוסיות');
-  if(!profile.specialties.length) errors.push('תחומי התמחות');
   if(!profile.styleText || profile.styleText.length < 50) errors.push('על הסגנון שלי (לפחות 50 תווים)');
   if(!profile.format) errors.push('פורמט');
   if(profile.format !== 'מקוון' && !profile.area) errors.push('אזור');
