@@ -194,7 +194,7 @@
 <button class="settings-cog" id="settingsCog" title="הגדרות backend">⚙</button>
 
 <script>
-const APPS_SCRIPT_URL = localStorage.getItem('apps-script-url') || '';
+const APPS_SCRIPT_URL = localStorage.getItem('apps-script-url') || 'https://script.google.com/macros/s/AKfycbzWZBfLWeLQdizRbNkCsG3BgrL6SHbx5G2wERIq9-p2_Vdt09v1m1sn8gZVaeSRq3k/exec';
 const LIVE = !!APPS_SCRIPT_URL;
 
 async function apiCall(action, params){
