@@ -321,6 +321,7 @@ function getAdminStats(p) {
     if (hasSpot) withSpotCount++;
     totalAccepted += accepted;
     return {
+      token: r.token || '',
       fullName: r.fullName || '(ללא שם)',
       credential: r.credential || '',
       published,
