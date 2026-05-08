@@ -25,6 +25,14 @@
 const TAB_SUPERVISORS = 'Supervisors';
 const TAB_PARAMETERS = 'Parameters';
 const TAB_SETTINGS = 'Settings';
+const TAB_STUDENTS = 'Students';
+
+const STUDENT_COLS = [
+  'id', 'created', 'fullName', 'email', 'phone',
+  'placedWith',   // supervisor token, or empty if not placed
+  'placedDate',   // ISO date when placed, or empty
+  'notes'
+];
 
 const SUPERVISOR_COLS = [
   'token', 'created', 'updated', 'published',
@@ -64,6 +72,11 @@ function handleRequest(e) {
       case 'saveSupervisor':         result = saveSupervisor(params); break;
       case 'getParameters':          result = getParameters(params); break;
       case 'getAdminStats':          result = getAdminStats(params); break;
+      case 'getStudents':            result = getStudents(params); break;
+      case 'addStudent':             result = addStudent(params); break;
+      case 'updateStudent':          result = updateStudent(params); break;
+      case 'deleteStudent':          result = deleteStudent(params); break;
+      case 'bulkAddStudents':        result = bulkAddStudents(params); break;
       default:                       result = { error: 'unknown_action', action };
     }
     return jsonOut(result);
@@ -307,16 +320,33 @@ function saveSupervisor(p) {
 function getAdminStats(p) {
   requireAdminPin(p);
   const rows = readSupervisorRows();
+  const students = readStudentRows();
 
-  const expectedStudents = Number(getSetting('expectedStudents')) || 0;
-  let totalAccepted = 0;
+  // Build supervisor token → name lookup
+  const supByToken = {};
+  rows.forEach(r => { if (r.token) supByToken[r.token] = r; });
+
+  // Student-level placement tally (authoritative once students are tracked)
+  const placedPerSupervisor = {};
+  let placedCount = 0;
+  students.forEach(s => {
+    if (s.placedWith) {
+      placedCount++;
+      placedPerSupervisor[s.placedWith] = (placedPerSupervisor[s.placedWith] || 0) + 1;
+    }
+  });
+
   let publishedCount = 0;
   let withSpotCount = 0;
+  let totalAccepted = 0;
 
   const supervisors = rows.map(r => {
     const published = r.published === true || r.published === 'TRUE' || r.published === 'true';
     const hasSpot = r.hasSpot === true || r.hasSpot === 'TRUE' || r.hasSpot === 'true';
-    const accepted = Number(r.studentsAccepted) || 0;
+    const selfReported = Number(r.studentsAccepted) || 0;
+    const placedFromList = placedPerSupervisor[r.token] || 0;
+    // If we have student records, prefer them; otherwise fall back to self-report
+    const accepted = students.length > 0 ? placedFromList : selfReported;
     if (published) publishedCount++;
     if (hasSpot) withSpotCount++;
     totalAccepted += accepted;
@@ -327,25 +357,238 @@ function getAdminStats(p) {
       published,
       hasSpot,
       studentsAccepted: accepted,
+      selfReportedAccepted: selfReported,
       email: r.email || '',
       phone: r.phone || ''
     };
   });
 
-  // Sort by acceptance count desc, then by name
   supervisors.sort((a, b) => (b.studentsAccepted - a.studentsAccepted) || a.fullName.localeCompare(b.fullName));
+
+  // Source of truth: if student list exists, use its count; otherwise the legacy expectedStudents setting.
+  const expectedStudents = students.length > 0 ? students.length : (Number(getSetting('expectedStudents')) || 0);
+  const totalForRemaining = students.length > 0 ? placedCount : totalAccepted;
 
   return {
     summary: {
       totalSupervisors: rows.length,
       publishedCount,
       withSpotCount,
-      totalAccepted,
+      totalAccepted: students.length > 0 ? placedCount : totalAccepted,
       expectedStudents,
-      remaining: Math.max(0, expectedStudents - totalAccepted)
+      remaining: Math.max(0, expectedStudents - totalForRemaining),
+      hasStudentList: students.length > 0
     },
-    supervisors
+    supervisors,
+    students: students.map(s => ({
+      id: s.id,
+      fullName: s.fullName,
+      email: s.email || '',
+      phone: s.phone || '',
+      placedWith: s.placedWith || '',
+      placedWithName: s.placedWith && supByToken[s.placedWith] ? supByToken[s.placedWith].fullName : '',
+      placedDate: s.placedDate || '',
+      notes: s.notes || ''
+    }))
   };
+}
+
+/* ========== Students (admin-managed roster) ========== */
+
+function getStudents(p) {
+  requireAdminPin(p);
+  const rows = readStudentRows();
+  const sup = readSupervisorRows();
+  const supByToken = {};
+  sup.forEach(r => { if (r.token) supByToken[r.token] = r.fullName || ''; });
+  return {
+    students: rows.map(s => ({
+      id: s.id,
+      fullName: s.fullName,
+      email: s.email || '',
+      phone: s.phone || '',
+      placedWith: s.placedWith || '',
+      placedWithName: s.placedWith ? (supByToken[s.placedWith] || '') : '',
+      placedDate: s.placedDate || '',
+      notes: s.notes || '',
+      created: s.created || ''
+    }))
+  };
+}
+
+function addStudent(p) {
+  requireAdminPin(p);
+  const fullName = String(p.fullName || '').trim();
+  if (!fullName) return { error: 'missing_name' };
+  const sheet = getOrCreateStudentsSheet();
+  const id = generateStudentId();
+  const now = new Date().toISOString();
+  const row = STUDENT_COLS.map(col => {
+    switch (col) {
+      case 'id': return id;
+      case 'created': return now;
+      case 'fullName': return fullName;
+      case 'email': return String(p.email || '').trim();
+      case 'phone': return String(p.phone || '').trim();
+      case 'placedWith': return String(p.placedWith || '').trim();
+      case 'placedDate': return p.placedWith ? now : '';
+      case 'notes': return String(p.notes || '').trim();
+      default: return '';
+    }
+  });
+  sheet.appendRow(row);
+  // Force phone column to text
+  const phoneCol = STUDENT_COLS.indexOf('phone');
+  if (phoneCol >= 0 && p.phone) {
+    const r = sheet.getLastRow();
+    sheet.getRange(r, phoneCol + 1).setNumberFormat('@').setValue(String(p.phone).trim());
+  }
+  return { ok: true, id };
+}
+
+function updateStudent(p) {
+  requireAdminPin(p);
+  const id = String(p.id || '');
+  if (!id) return { error: 'missing_id' };
+  const sheet = getOrCreateStudentsSheet();
+  const values = sheet.getDataRange().getValues();
+  const headers = values[0];
+  const idCol = headers.indexOf('id');
+  if (idCol < 0) return { error: 'schema_error' };
+
+  let rowIdx = -1;
+  for (let i = 1; i < values.length; i++) {
+    if (String(values[i][idCol]) === id) { rowIdx = i + 1; break; }
+  }
+  if (rowIdx < 0) return { error: 'not_found' };
+
+  const updatable = ['fullName', 'email', 'phone', 'placedWith', 'notes'];
+  for (const k of updatable) {
+    if (p[k] === undefined) continue;
+    const col = headers.indexOf(k);
+    if (col < 0) continue;
+    const v = String(p[k] == null ? '' : p[k]).trim();
+    const cell = sheet.getRange(rowIdx, col + 1);
+    if (k === 'phone') {
+      cell.setNumberFormat('@').setValue(v);
+    } else {
+      cell.setValue(v);
+    }
+  }
+  // If placedWith was set, stamp placedDate (or clear it when unassigned)
+  if (p.placedWith !== undefined) {
+    const dateCol = headers.indexOf('placedDate');
+    if (dateCol >= 0) {
+      const newPlaced = String(p.placedWith || '').trim();
+      const prev = String(values[rowIdx - 1][headers.indexOf('placedWith')] || '').trim();
+      if (newPlaced && newPlaced !== prev) {
+        sheet.getRange(rowIdx, dateCol + 1).setValue(new Date().toISOString());
+      } else if (!newPlaced) {
+        sheet.getRange(rowIdx, dateCol + 1).setValue('');
+      }
+    }
+  }
+  return { ok: true };
+}
+
+function deleteStudent(p) {
+  requireAdminPin(p);
+  const id = String(p.id || '');
+  if (!id) return { error: 'missing_id' };
+  const sheet = getOrCreateStudentsSheet();
+  const values = sheet.getDataRange().getValues();
+  const headers = values[0];
+  const idCol = headers.indexOf('id');
+  if (idCol < 0) return { error: 'schema_error' };
+  for (let i = 1; i < values.length; i++) {
+    if (String(values[i][idCol]) === id) {
+      sheet.deleteRow(i + 1);
+      return { ok: true };
+    }
+  }
+  return { error: 'not_found' };
+}
+
+function bulkAddStudents(p) {
+  requireAdminPin(p);
+  const text = String(p.names || '');
+  // Each line = one student. Optional: "Name, email, phone" comma-separated.
+  const lines = text.split(/\r?\n/).map(x => x.trim()).filter(Boolean);
+  if (!lines.length) return { error: 'empty' };
+
+  const sheet = getOrCreateStudentsSheet();
+  const existing = readStudentRows();
+  const existingNames = new Set(existing.map(s => String(s.fullName || '').trim().toLowerCase()));
+  const existingEmails = new Set(existing.map(s => String(s.email || '').trim().toLowerCase()).filter(Boolean));
+
+  let added = 0, skipped = 0;
+  const now = new Date().toISOString();
+  const newRows = [];
+  for (const line of lines) {
+    const parts = line.split(',').map(x => x.trim());
+    const fullName = parts[0] || '';
+    const email = parts[1] || '';
+    const phone = parts[2] || '';
+    if (!fullName) { skipped++; continue; }
+    const nameKey = fullName.toLowerCase();
+    const emailKey = email.toLowerCase();
+    if (existingNames.has(nameKey) || (emailKey && existingEmails.has(emailKey))) { skipped++; continue; }
+    existingNames.add(nameKey);
+    if (emailKey) existingEmails.add(emailKey);
+    newRows.push(STUDENT_COLS.map(col => {
+      switch (col) {
+        case 'id': return generateStudentId();
+        case 'created': return now;
+        case 'fullName': return fullName;
+        case 'email': return email;
+        case 'phone': return phone;
+        case 'placedWith': return '';
+        case 'placedDate': return '';
+        case 'notes': return '';
+        default: return '';
+      }
+    }));
+    added++;
+  }
+  if (newRows.length) {
+    const startRow = sheet.getLastRow() + 1;
+    sheet.getRange(startRow, 1, newRows.length, STUDENT_COLS.length).setValues(newRows);
+    const phoneCol = STUDENT_COLS.indexOf('phone');
+    if (phoneCol >= 0) {
+      sheet.getRange(startRow, phoneCol + 1, newRows.length, 1).setNumberFormat('@');
+    }
+  }
+  return { ok: true, added, skipped };
+}
+
+function readStudentRows() {
+  const sheet = getOrCreateStudentsSheet();
+  const values = sheet.getDataRange().getValues();
+  if (values.length < 2) return [];
+  const headers = values[0];
+  return values.slice(1).filter(row => row[headers.indexOf('id')]).map(row => {
+    const obj = {};
+    headers.forEach((h, i) => { obj[h] = row[i]; });
+    return obj;
+  });
+}
+
+function getOrCreateStudentsSheet() {
+  const ss = SpreadsheetApp.getActive();
+  let sheet = ss.getSheetByName(TAB_STUDENTS);
+  if (!sheet) {
+    sheet = ss.insertSheet(TAB_STUDENTS);
+    sheet.appendRow(STUDENT_COLS);
+    sheet.setFrozenRows(1);
+  } else {
+    const firstRow = sheet.getRange(1, 1, 1, STUDENT_COLS.length).getValues()[0];
+    if (!firstRow[0]) sheet.getRange(1, 1, 1, STUDENT_COLS.length).setValues([STUDENT_COLS]);
+  }
+  return sheet;
+}
+
+function generateStudentId() {
+  return 's' + Date.now().toString(36) + Math.floor(Math.random() * 1000).toString(36);
 }
 
 /* ========== Parameters ========== */
@@ -865,7 +1108,8 @@ function setupSheets() {
   getOrCreateParametersSheet();
   getOrCreateSettingsSheet();
   getOrCreateBulkImportSheet();
-  Logger.log('Setup complete. Sheets: Supervisors, Parameters, Settings, BulkImport');
+  getOrCreateStudentsSheet();
+  Logger.log('Setup complete. Sheets: Supervisors, Parameters, Settings, BulkImport, Students');
 }
 
 /**

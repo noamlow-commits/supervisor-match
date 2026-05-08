@@ -128,6 +128,40 @@
 
   .err-banner{background:#fee2e2;color:#991b1b;padding:10px 14px;border-radius:10px;font-size:13.5px;margin:14px 0;display:none}
   .err-banner.show{display:block}
+
+  /* ====== Students section ====== */
+  .students-card{background:var(--surface);border-radius:14px;box-shadow:var(--shadow);margin-bottom:24px;overflow:hidden}
+  .students-head{padding:18px 22px 12px;border-bottom:1px solid var(--line);display:flex;align-items:baseline;justify-content:space-between;gap:12px;flex-wrap:wrap}
+  .students-head h2{margin:0;font-size:16px;font-weight:600}
+  .students-head .desc{margin:4px 0 0;font-size:13px;color:var(--muted)}
+  .students-head .counts{font-size:13px;color:var(--ink-soft);font-weight:500}
+  .students-head .counts b{color:var(--accent-strong);font-weight:700}
+  .students-toolbar{padding:14px 22px;border-bottom:1px solid var(--line);background:#fafaf7;display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+  .students-toolbar input{padding:8px 12px;border:1.5px solid var(--border);border-radius:8px;background:white;color:var(--ink);outline:none;font-size:14px;flex:1;min-width:160px}
+  .students-toolbar input:focus{border-color:var(--accent)}
+  .students-toolbar button{padding:8px 14px;background:var(--accent);color:white;border-radius:8px;font-weight:600;font-size:13.5px;flex-shrink:0}
+  .students-toolbar button:hover{background:var(--accent-strong)}
+  .students-toolbar button.secondary{background:var(--accent-soft);color:var(--accent-strong)}
+  .students-toolbar button.secondary:hover{background:var(--accent);color:white}
+  .bulk-paste{padding:14px 22px;border-bottom:1px solid var(--line);background:#fafaf7;display:none}
+  .bulk-paste.show{display:block}
+  .bulk-paste textarea{width:100%;padding:10px 12px;border:1.5px solid var(--border);border-radius:8px;background:white;color:var(--ink);outline:none;font-size:14px;font-family:inherit;resize:vertical;min-height:90px}
+  .bulk-paste textarea:focus{border-color:var(--accent)}
+  .bulk-paste .hint{font-size:12.5px;color:var(--muted);margin:6px 0 10px}
+  .bulk-paste .actions{display:flex;gap:8px;margin-top:8px}
+  .bulk-paste button{padding:8px 14px;border-radius:8px;font-weight:600;font-size:13.5px}
+  .bulk-paste button.primary{background:var(--accent);color:white}
+  .bulk-paste button.cancel{background:var(--bg);color:var(--ink-soft)}
+  .student-status{font-size:13px}
+  .student-status.placed{color:var(--available);font-weight:600}
+  .student-status.waiting{color:var(--warn);font-weight:600}
+  .student-row select{padding:5px 8px;border:1px solid var(--border);border-radius:6px;background:white;font-size:13px;font-family:inherit;color:var(--ink);max-width:180px}
+  .student-row select:focus{outline:none;border-color:var(--accent)}
+  .row-action{padding:5px 9px;border-radius:6px;font-size:12px;background:transparent;color:var(--muted)}
+  .row-action.danger:hover{background:#fee2e2;color:#991b1b}
+  .row-action.edit:hover{background:var(--accent-soft);color:var(--accent-strong)}
+  .empty-students{padding:30px 22px;text-align:center;color:var(--muted);font-size:14px}
+  .empty-students .hint{font-size:13px;margin-top:6px}
 </style>
 </head>
 <body>
@@ -174,6 +208,33 @@
       <span class="pct" id="progressPct">—%</span>
     </div>
     <div class="bar"><div class="bar-fill" id="progressBar" style="width:0%"></div></div>
+  </div>
+
+  <!-- Students roster -->
+  <div class="students-card">
+    <div class="students-head">
+      <div>
+        <h2>תלמידים</h2>
+        <p class="desc">רשימת תלמידי המחזור. שייכי כל תלמיד למדריך כשמתבצע השיבוץ — כך תוכלי לעקוב מי כבר מצא ומי עדיין מחפש.</p>
+      </div>
+      <div class="counts" id="studentsCounts"></div>
+    </div>
+    <div class="students-toolbar">
+      <input type="text" id="newStudentName" placeholder="שם מלא (חובה)">
+      <input type="email" id="newStudentEmail" placeholder="מייל (לא חובה)">
+      <input type="tel" id="newStudentPhone" placeholder="טלפון (לא חובה)">
+      <button id="addStudentBtn">+ הוסף</button>
+      <button id="toggleBulkBtn" class="secondary">הוספת רשימה</button>
+    </div>
+    <div class="bulk-paste" id="bulkPaste">
+      <p class="hint">הדביקי שם בכל שורה. אופציונלי — שם, מייל, טלפון מופרדים בפסיקים. שמות שכבר קיימים יידלגו.</p>
+      <textarea id="bulkText" placeholder="יעל כהן&#10;דוד לוי, david@example.com&#10;מירי שדה, miri@example.com, 0501234567"></textarea>
+      <div class="actions">
+        <button class="primary" id="bulkSubmitBtn">הוסף את כולם</button>
+        <button class="cancel" id="bulkCancelBtn">בטל</button>
+      </div>
+    </div>
+    <div id="studentsTableContainer"></div>
   </div>
 
   <!-- Supervisors table -->
@@ -269,12 +330,41 @@ function showErr(msg){
   e.classList.add('show');
 }
 
+// Cache last loaded data so the students section can re-render without a re-fetch
+let lastData = null;
+
+function recalcDemoSummary(d){
+  if(!d || !d.students) return;
+  const placed = d.students.filter(s => s.placedWith).length;
+  const total = d.students.length;
+  // Reset and recount per-supervisor
+  const perSup = {};
+  d.students.forEach(s => { if(s.placedWith) perSup[s.placedWith] = (perSup[s.placedWith]||0)+1; });
+  d.supervisors.forEach(s => { s.studentsAccepted = perSup[s.token] || 0; });
+  d.supervisors.sort((a,b)=>(b.studentsAccepted - a.studentsAccepted) || a.fullName.localeCompare(b.fullName));
+  let publishedCount=0, withSpotCount=0;
+  d.supervisors.forEach(s => { if(s.published) publishedCount++; if(s.hasSpot) withSpotCount++; });
+  d.summary = {
+    totalSupervisors: d.supervisors.length,
+    publishedCount, withSpotCount,
+    totalAccepted: placed,
+    expectedStudents: total,
+    remaining: Math.max(0, total - placed),
+    hasStudentList: total > 0
+  };
+}
+
 function renderStats(d){
+  if(!LIVE) recalcDemoSummary(d);
+  lastData = d;
   const s = d.summary;
   document.getElementById('sumTotal').textContent = s.totalSupervisors;
   document.getElementById('sumPublished').textContent = `${s.publishedCount} מפורסמים`;
   document.getElementById('sumAccepted').textContent = s.totalAccepted;
-  document.getElementById('sumExpected').textContent = s.expectedStudents > 0 ? `מתוך ${s.expectedStudents} צפויים` : 'יעד לא הוגדר';
+  const expectedLabel = s.hasStudentList
+    ? `מתוך ${s.expectedStudents} בכיתה`
+    : (s.expectedStudents > 0 ? `מתוך ${s.expectedStudents} צפויים` : 'הוסיפי תלמידים');
+  document.getElementById('sumExpected').textContent = expectedLabel;
   document.getElementById('sumRemaining').textContent = s.expectedStudents > 0 ? s.remaining : '—';
   document.getElementById('sumWithSpot').textContent = s.withSpotCount;
 
@@ -282,7 +372,129 @@ function renderStats(d){
   document.getElementById('progressPct').textContent = pct + '%';
   document.getElementById('progressBar').style.width = pct + '%';
 
+  renderStudents(d.students || [], d.supervisors || []);
   renderTable(d.supervisors);
+}
+
+function renderStudents(students, supervisors){
+  const counts = document.getElementById('studentsCounts');
+  const c = document.getElementById('studentsTableContainer');
+  const placed = students.filter(s => s.placedWith).length;
+  const waiting = students.length - placed;
+
+  if(students.length === 0){
+    counts.innerHTML = '';
+    c.innerHTML = `<div class="empty-students">
+      <div>אין עדיין תלמידים ברשימה.</div>
+      <div class="hint">הוסיפי שמות למעלה כדי להתחיל לעקוב אחרי השיבוץ.</div>
+    </div>`;
+    return;
+  }
+  counts.innerHTML = `<b>${students.length}</b> תלמידים · <b>${placed}</b> שובצו · <b>${waiting}</b> ממתינים`;
+
+  // Sort: waiting first (alphabetical), then placed (alphabetical)
+  const sorted = students.slice().sort((a,b)=>{
+    const ap = !!a.placedWith, bp = !!b.placedWith;
+    if(ap !== bp) return ap ? 1 : -1;
+    return String(a.fullName).localeCompare(String(b.fullName));
+  });
+
+  // Build supervisor dropdown options once
+  const supOpts = supervisors.map(s => `<option value="${esc(s.token)}">${esc(s.fullName)}</option>`).join('');
+
+  let html = `<table>
+    <thead><tr>
+      <th>שם</th>
+      <th>פרטי קשר</th>
+      <th>סטטוס שיבוץ</th>
+      <th>פעולות</th>
+    </tr></thead>
+    <tbody>`;
+  sorted.forEach(s => {
+    const phoneStr = s.phone ? String(s.phone).replace(/^(\d)/, '0$1').replace(/^00/, '0') : '';
+    const status = s.placedWith
+      ? `<span class="student-status placed">✓ שובץ אצל ${esc(s.placedWithName || '—')}</span>`
+      : `<span class="student-status waiting">○ ממתין</span>`;
+    html += `<tr class="student-row" data-id="${esc(s.id)}">
+      <td class="name-cell" data-label="שם">${esc(s.fullName)}</td>
+      <td data-label="קשר"><div class="contact-mini">${s.email ? `<a href="mailto:${esc(s.email)}">${esc(s.email)}</a><br>`:''}${phoneStr ? `<a href="tel:${esc(phoneStr)}">${esc(phoneStr)}</a>`:''}</div></td>
+      <td data-label="שיבוץ">
+        ${status}
+        <div style="margin-top:4px">
+          <select class="placement-select" data-id="${esc(s.id)}">
+            <option value="">— ללא שיבוץ —</option>
+            ${supOpts}
+          </select>
+        </div>
+      </td>
+      <td data-label="פעולות">
+        <button class="row-action danger" data-action="delete" data-id="${esc(s.id)}" title="מחק">🗑</button>
+      </td>
+    </tr>`;
+  });
+  html += '</tbody></table>';
+  c.innerHTML = html;
+
+  // Pre-select current placement value in each dropdown
+  sorted.forEach(s => {
+    const sel = c.querySelector(`select.placement-select[data-id="${cssEsc(s.id)}"]`);
+    if(sel) sel.value = s.placedWith || '';
+  });
+
+  // Wire up dropdowns
+  c.querySelectorAll('select.placement-select').forEach(sel => {
+    sel.addEventListener('change', async (e) => {
+      const id = e.target.getAttribute('data-id');
+      const placedWith = e.target.value;
+      if(!LIVE){
+        const stu = lastData.students.find(s => s.id === id);
+        if(stu){
+          stu.placedWith = placedWith;
+          const sup = lastData.supervisors.find(s => s.token === placedWith);
+          stu.placedWithName = sup ? sup.fullName : '';
+          stu.placedDate = placedWith ? new Date().toISOString().slice(0,10) : '';
+          renderStats(lastData);
+        }
+        return;
+      }
+      e.target.disabled = true;
+      const r = await apiCall('updateStudent', {adminPin: sessionStorage.getItem('admin-pin') || '', id, placedWith});
+      e.target.disabled = false;
+      if(!r || r.error){
+        showErr('עדכון השיבוץ נכשל: ' + (r && r.message ? r.message : (r && r.error) || 'שגיאה'));
+        return;
+      }
+      loadStats();
+    });
+  });
+
+  // Delete buttons
+  c.querySelectorAll('button[data-action="delete"]').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const id = btn.getAttribute('data-id');
+      const tr = btn.closest('tr');
+      const name = tr ? tr.querySelector('.name-cell').textContent.trim() : '';
+      if(!confirm(`למחוק את "${name}" מרשימת התלמידים?`)) return;
+      if(!LIVE){
+        lastData.students = lastData.students.filter(s => s.id !== id);
+        renderStats(lastData);
+        return;
+      }
+      btn.disabled = true;
+      const r = await apiCall('deleteStudent', {adminPin: sessionStorage.getItem('admin-pin') || '', id});
+      if(!r || r.error){
+        btn.disabled = false;
+        showErr('מחיקה נכשלה: ' + (r && r.message ? r.message : (r && r.error) || 'שגיאה'));
+        return;
+      }
+      loadStats();
+    });
+  });
+}
+
+function cssEsc(s){
+  // Minimal CSS attribute selector escaper
+  return String(s).replace(/[^\w-]/g, '\\$&');
 }
 
 function renderTable(supervisors){
@@ -322,19 +534,119 @@ function esc(s){ return String(s == null ? '' : s).replace(/[&<>"']/g, c=>({'&':
 function renderDemo(){
   document.getElementById('demoBadge').style.display = 'inline-block';
   renderStats({
-    summary: {totalSupervisors: 8, publishedCount: 7, totalAccepted: 12, expectedStudents: 25, remaining: 13, withSpotCount: 5},
+    summary: {totalSupervisors: 8, publishedCount: 7, totalAccepted: 4, expectedStudents: 9, remaining: 5, withSpotCount: 5, hasStudentList: true},
     supervisors: [
-      {token:'demo1', fullName:'ד״ר יעל כהן', credential:'פסיכולוגית קלינית מומחית, MA', published:true, hasSpot:true, studentsAccepted:3, email:'yael@example.com', phone:'0501234567'},
-      {token:'demo2', fullName:'אבי לוי', credential:'עו״ס קליני', published:true, hasSpot:true, studentsAccepted:2, email:'avi@example.com', phone:'0507654321'},
-      {token:'demo3', fullName:'ד״ר שרה אברמוביץ', credential:'פסיכולוגית קלינית בכירה', published:true, hasSpot:false, studentsAccepted:4, email:'sara@example.com', phone:'036123456'},
-      {token:'demo4', fullName:'משה רוזנברג', credential:'פסיכותרפיסט, MSc', published:true, hasSpot:true, studentsAccepted:1, email:'moshe@example.com', phone:'0521122334'},
-      {token:'demo5', fullName:'ד״ר רותי בן-עמי', credential:'ילדים ונוער', published:true, hasSpot:true, studentsAccepted:2, email:'ruti@example.com', phone:'0509988776'},
+      {token:'demo1', fullName:'ד״ר יעל כהן', credential:'פסיכולוגית קלינית מומחית, MA', published:true, hasSpot:true, studentsAccepted:2, email:'yael@example.com', phone:'0501234567'},
+      {token:'demo2', fullName:'אבי לוי', credential:'עו״ס קליני', published:true, hasSpot:true, studentsAccepted:1, email:'avi@example.com', phone:'0507654321'},
+      {token:'demo3', fullName:'ד״ר שרה אברמוביץ', credential:'פסיכולוגית קלינית בכירה', published:true, hasSpot:false, studentsAccepted:1, email:'sara@example.com', phone:'036123456'},
+      {token:'demo4', fullName:'משה רוזנברג', credential:'פסיכותרפיסט, MSc', published:true, hasSpot:true, studentsAccepted:0, email:'moshe@example.com', phone:'0521122334'},
+      {token:'demo5', fullName:'ד״ר רותי בן-עמי', credential:'ילדים ונוער', published:true, hasSpot:true, studentsAccepted:0, email:'ruti@example.com', phone:'0509988776'},
       {token:'demo6', fullName:'דניאל שטרן', credential:'מטפל זוגי', published:true, hasSpot:false, studentsAccepted:0, email:'daniel@example.com', phone:'0533344556'},
       {token:'demo7', fullName:'ד״ר חנה גרין', credential:'CBT-T', published:false, hasSpot:true, studentsAccepted:0, email:'hana@example.com', phone:'0541112233'},
       {token:'demo8', fullName:'יוסף ברנשטיין', credential:'מומחה טראומה', published:true, hasSpot:true, studentsAccepted:0, email:'yosef@example.com', phone:'0508887766'}
+    ],
+    students: [
+      {id:'s1', fullName:'תמר בן-דוד', email:'tamar@example.com', phone:'0501112233', placedWith:'demo1', placedWithName:'ד״ר יעל כהן', placedDate:'2026-04-12', notes:''},
+      {id:'s2', fullName:'אורי שמש', email:'uri@example.com', phone:'0502223344', placedWith:'demo1', placedWithName:'ד״ר יעל כהן', placedDate:'2026-04-15', notes:''},
+      {id:'s3', fullName:'הילה גלעד', email:'hila@example.com', phone:'', placedWith:'demo2', placedWithName:'אבי לוי', placedDate:'2026-04-22', notes:''},
+      {id:'s4', fullName:'נועה רביד', email:'noa@example.com', phone:'0504445566', placedWith:'demo3', placedWithName:'ד״ר שרה אברמוביץ', placedDate:'2026-04-28', notes:''},
+      {id:'s5', fullName:'עמית כהן', email:'amit@example.com', phone:'0505556677', placedWith:'', placedWithName:'', placedDate:'', notes:''},
+      {id:'s6', fullName:'ליאת אביב', email:'liat@example.com', phone:'', placedWith:'', placedWithName:'', placedDate:'', notes:''},
+      {id:'s7', fullName:'יואב נחמן', email:'yoav@example.com', phone:'0507778899', placedWith:'', placedWithName:'', placedDate:'', notes:''},
+      {id:'s8', fullName:'מאיה רון', email:'maya@example.com', phone:'', placedWith:'', placedWithName:'', placedDate:'', notes:''},
+      {id:'s9', fullName:'איתי לוין', email:'itay@example.com', phone:'0509990011', placedWith:'', placedWithName:'', placedDate:'', notes:''}
     ]
   });
 }
+
+/* ===== Students actions ===== */
+async function addOneStudent(){
+  const name = document.getElementById('newStudentName').value.trim();
+  const email = document.getElementById('newStudentEmail').value.trim();
+  const phone = document.getElementById('newStudentPhone').value.trim();
+  if(!name){ document.getElementById('newStudentName').focus(); return; }
+  const btn = document.getElementById('addStudentBtn');
+  btn.disabled = true;
+  if(!LIVE){
+    // Demo: append to lastData and re-render
+    const id = 's' + Date.now().toString(36);
+    lastData.students.push({id, fullName:name, email, phone, placedWith:'', placedWithName:'', placedDate:'', notes:''});
+    renderStats(lastData);
+    btn.disabled = false;
+    document.getElementById('newStudentName').value = '';
+    document.getElementById('newStudentEmail').value = '';
+    document.getElementById('newStudentPhone').value = '';
+    return;
+  }
+  const r = await apiCall('addStudent', {adminPin: sessionStorage.getItem('admin-pin') || '', fullName: name, email, phone});
+  btn.disabled = false;
+  if(!r || r.error){
+    showErr('הוספת תלמיד נכשלה: ' + (r && r.message ? r.message : (r && r.error) || 'שגיאה'));
+    return;
+  }
+  document.getElementById('newStudentName').value = '';
+  document.getElementById('newStudentEmail').value = '';
+  document.getElementById('newStudentPhone').value = '';
+  document.getElementById('newStudentName').focus();
+  loadStats();
+}
+
+async function bulkAddStudentsAction(){
+  const text = document.getElementById('bulkText').value;
+  if(!text.trim()) return;
+  const btn = document.getElementById('bulkSubmitBtn');
+  btn.disabled = true; btn.textContent = 'מוסיף...';
+  if(!LIVE){
+    const lines = text.split(/\r?\n/).map(x=>x.trim()).filter(Boolean);
+    let added = 0;
+    const existing = new Set(lastData.students.map(s => s.fullName.toLowerCase()));
+    lines.forEach(line => {
+      const parts = line.split(',').map(x=>x.trim());
+      const fullName = parts[0];
+      if(!fullName) return;
+      if(existing.has(fullName.toLowerCase())) return;
+      existing.add(fullName.toLowerCase());
+      lastData.students.push({
+        id: 's'+Date.now().toString(36)+Math.random().toString(36).slice(2,5),
+        fullName, email: parts[1]||'', phone: parts[2]||'',
+        placedWith:'', placedWithName:'', placedDate:'', notes:''
+      });
+      added++;
+    });
+    renderStats(lastData);
+    document.getElementById('bulkText').value = '';
+    document.getElementById('bulkPaste').classList.remove('show');
+    btn.disabled = false; btn.textContent = 'הוסף את כולם';
+    alert(`נוספו ${added} תלמידים.`);
+    return;
+  }
+  const r = await apiCall('bulkAddStudents', {adminPin: sessionStorage.getItem('admin-pin') || '', names: text});
+  btn.disabled = false; btn.textContent = 'הוסף את כולם';
+  if(!r || r.error){
+    showErr('הוספה נכשלה: ' + (r && r.message ? r.message : (r && r.error) || 'שגיאה'));
+    return;
+  }
+  document.getElementById('bulkText').value = '';
+  document.getElementById('bulkPaste').classList.remove('show');
+  alert(`נוספו ${r.added} תלמידים. דילוג על ${r.skipped} (כפילויות או שורות ריקות).`);
+  loadStats();
+}
+
+/* ===== Students button wiring ===== */
+document.getElementById('addStudentBtn').addEventListener('click', addOneStudent);
+document.getElementById('newStudentName').addEventListener('keydown', e => { if(e.key === 'Enter') addOneStudent(); });
+document.getElementById('newStudentEmail').addEventListener('keydown', e => { if(e.key === 'Enter') addOneStudent(); });
+document.getElementById('newStudentPhone').addEventListener('keydown', e => { if(e.key === 'Enter') addOneStudent(); });
+document.getElementById('toggleBulkBtn').addEventListener('click', () => {
+  const el = document.getElementById('bulkPaste');
+  el.classList.toggle('show');
+  if(el.classList.contains('show')) document.getElementById('bulkText').focus();
+});
+document.getElementById('bulkSubmitBtn').addEventListener('click', bulkAddStudentsAction);
+document.getElementById('bulkCancelBtn').addEventListener('click', () => {
+  document.getElementById('bulkText').value = '';
+  document.getElementById('bulkPaste').classList.remove('show');
+});
 
 /* ===== Buttons & init ===== */
 document.getElementById('refreshBtn').addEventListener('click', loadStats);
