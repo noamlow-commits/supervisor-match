@@ -77,6 +77,10 @@ function handleRequest(e) {
       case 'updateStudent':          result = updateStudent(params); break;
       case 'deleteStudent':          result = deleteStudent(params); break;
       case 'bulkAddStudents':        result = bulkAddStudents(params); break;
+      case 'getUnplacedStudents':    result = getUnplacedStudents(params); break;
+      case 'getMyPlacedStudents':    result = getMyPlacedStudents(params); break;
+      case 'claimStudent':           result = claimStudent(params); break;
+      case 'unclaimStudent':         result = unclaimStudent(params); break;
       default:                       result = { error: 'unknown_action', action };
     }
     return jsonOut(result);
@@ -559,6 +563,96 @@ function bulkAddStudents(p) {
     }
   }
   return { ok: true, added, skipped };
+}
+
+/* ========== Students (supervisor-facing — token-authenticated) ========== */
+
+function requireSupervisorToken(p) {
+  const token = String(p.token || '');
+  if (!token) throw new Error('missing_token');
+  const rows = readSupervisorRows();
+  const sup = rows.find(r => String(r.token) === token);
+  if (!sup) throw new Error('invalid_token');
+  return sup;
+}
+
+function getUnplacedStudents(p) {
+  requireSupervisorToken(p);
+  const rows = readStudentRows();
+  const unplaced = rows.filter(s => !String(s.placedWith || '').trim());
+  // Sort alphabetically
+  unplaced.sort((a, b) => String(a.fullName).localeCompare(String(b.fullName)));
+  return {
+    students: unplaced.map(s => ({ id: s.id, fullName: s.fullName }))
+  };
+}
+
+function getMyPlacedStudents(p) {
+  const sup = requireSupervisorToken(p);
+  const rows = readStudentRows();
+  const mine = rows.filter(s => String(s.placedWith || '').trim() === sup.token);
+  mine.sort((a, b) => String(a.fullName).localeCompare(String(b.fullName)));
+  return {
+    students: mine.map(s => ({
+      id: s.id,
+      fullName: s.fullName,
+      placedDate: s.placedDate || ''
+    }))
+  };
+}
+
+function claimStudent(p) {
+  const sup = requireSupervisorToken(p);
+  const id = String(p.id || '');
+  if (!id) return { error: 'missing_id' };
+  const sheet = getOrCreateStudentsSheet();
+  const values = sheet.getDataRange().getValues();
+  const headers = values[0];
+  const idCol = headers.indexOf('id');
+  const placedCol = headers.indexOf('placedWith');
+  const dateCol = headers.indexOf('placedDate');
+  if (idCol < 0 || placedCol < 0) return { error: 'schema_error' };
+
+  for (let i = 1; i < values.length; i++) {
+    if (String(values[i][idCol]) === id) {
+      const current = String(values[i][placedCol] || '').trim();
+      // Refuse if already claimed by someone else (race protection)
+      if (current && current !== sup.token) {
+        return { error: 'already_claimed' };
+      }
+      sheet.getRange(i + 1, placedCol + 1).setValue(sup.token);
+      if (dateCol >= 0) sheet.getRange(i + 1, dateCol + 1).setValue(new Date().toISOString());
+      return { ok: true };
+    }
+  }
+  return { error: 'not_found' };
+}
+
+function unclaimStudent(p) {
+  const sup = requireSupervisorToken(p);
+  const id = String(p.id || '');
+  if (!id) return { error: 'missing_id' };
+  const sheet = getOrCreateStudentsSheet();
+  const values = sheet.getDataRange().getValues();
+  const headers = values[0];
+  const idCol = headers.indexOf('id');
+  const placedCol = headers.indexOf('placedWith');
+  const dateCol = headers.indexOf('placedDate');
+  if (idCol < 0 || placedCol < 0) return { error: 'schema_error' };
+
+  for (let i = 1; i < values.length; i++) {
+    if (String(values[i][idCol]) === id) {
+      const current = String(values[i][placedCol] || '').trim();
+      // Only the supervisor who claimed can release
+      if (current !== sup.token) {
+        return { error: 'not_yours' };
+      }
+      sheet.getRange(i + 1, placedCol + 1).setValue('');
+      if (dateCol >= 0) sheet.getRange(i + 1, dateCol + 1).setValue('');
+      return { ok: true };
+    }
+  }
+  return { error: 'not_found' };
 }
 
 function readStudentRows() {

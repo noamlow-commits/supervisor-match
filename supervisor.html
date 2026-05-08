@@ -221,6 +221,43 @@
     background:#fef3c7;color:#854d0e;font-size:11px;padding:3px 9px;border-radius:8px;
     font-weight:600;margin-inline-start:6px;display:none;
   }
+
+  /* ===== Students roster (claim flow) ===== */
+  .roster-help{font-size:13px;color:var(--ink-soft);margin:0 0 14px;line-height:1.55}
+  .roster-block{margin-top:14px}
+  .roster-block:first-of-type{margin-top:0}
+  .roster-block-title{font-size:13px;font-weight:600;color:var(--ink-soft);margin:0 0 8px}
+  .my-students-list{display:flex;flex-direction:column;gap:6px}
+  .my-student-row{
+    display:flex;align-items:center;justify-content:space-between;gap:10px;
+    padding:10px 14px;background:var(--success-soft);border-radius:10px;
+    font-size:14.5px;color:var(--success);
+  }
+  .my-student-row .name{font-weight:600;color:var(--ink)}
+  .my-student-row .date{font-size:12px;color:var(--muted);margin-inline-start:8px}
+  .release-btn{
+    background:transparent;color:var(--muted);font-size:12px;padding:4px 10px;
+    border-radius:6px;font-weight:500;
+  }
+  .release-btn:hover{background:var(--surface);color:var(--error)}
+  .claim-row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+  .claim-row select{
+    flex:1;min-width:180px;padding:10px 12px;border:1.5px solid var(--border);
+    border-radius:10px;background:var(--surface);color:var(--ink);font-size:14.5px;
+    outline:none;
+  }
+  .claim-row select:focus{border-color:var(--accent)}
+  .claim-row button{
+    padding:10px 18px;background:var(--accent);color:white;border-radius:10px;
+    font-weight:600;font-size:14px;flex-shrink:0;
+  }
+  .claim-row button:hover{background:var(--accent-strong)}
+  .claim-row button:disabled{background:var(--border);color:var(--muted);cursor:not-allowed}
+  .roster-empty{font-size:13px;color:var(--muted);font-style:italic;padding:6px 0}
+  .roster-msg{font-size:13px;padding:8px 12px;border-radius:8px;margin-top:8px;display:none}
+  .roster-msg.show{display:block}
+  .roster-msg.ok{background:var(--success-soft);color:var(--success)}
+  .roster-msg.err{background:var(--error-soft);color:var(--error)}
 </style>
 </head>
 <body>
@@ -324,6 +361,28 @@
       <label class="field-label" for="studentsAccepted">כמה תלמידים אישרת לקבל השנה</label>
       <p class="field-help">עדכן/י את המספר כשאת/ה מאשר/ת תלמיד חדש. רק המזכירה האקדמית רואה את המספרים האלה — לא תלמידים ולא מדריכים אחרים.</p>
       <input class="input" id="studentsAccepted" type="number" min="0" max="20" value="0" style="max-width:120px">
+    </div>
+  </div>
+
+  <!-- ===== Section 4b: My students (claim from roster) ===== -->
+  <div class="section" id="rosterSection" style="display:none">
+    <div class="section-title">התלמידים שלי</div>
+    <p class="roster-help">כשתלמיד מהמחזור פונה אליך ואת/ה מקבל/ת אותו, סמן/י את שמו כאן. השיבוץ יתעדכן מיידית גם אצל המזכירה האקדמית.</p>
+
+    <div class="roster-block" id="myStudentsBlock">
+      <div class="roster-block-title">תלמידים אצלי</div>
+      <div class="my-students-list" id="myStudentsList"></div>
+    </div>
+
+    <div class="roster-block">
+      <div class="roster-block-title">תלמידים שעדיין מחפשים מדריך</div>
+      <div class="claim-row">
+        <select id="unplacedSelect" aria-label="בחר/י תלמיד">
+          <option value="">— בחר/י תלמיד —</option>
+        </select>
+        <button id="claimBtn" disabled>אני לוקח/ת</button>
+      </div>
+      <div class="roster-msg" id="rosterMsg"></div>
     </div>
   </div>
 
@@ -598,6 +657,107 @@ async function init(){
   document.getElementById('btnPublish').addEventListener('click', publish);
   document.getElementById('settingsCog').addEventListener('click', openSettings);
   if(!LIVE) document.getElementById('demoBadge').style.display='inline-block';
+
+  // Roster (only meaningful with a token + live backend)
+  if(LIVE && TOKEN){
+    initRoster();
+  }
+}
+
+/* ===== My students roster ===== */
+async function initRoster(){
+  document.getElementById('claimBtn').addEventListener('click', onClaim);
+  document.getElementById('unplacedSelect').addEventListener('change', e => {
+    document.getElementById('claimBtn').disabled = !e.target.value;
+  });
+  await refreshRoster();
+}
+
+async function refreshRoster(){
+  const [mine, unplaced] = await Promise.all([
+    apiCall('getMyPlacedStudents', {token: TOKEN}),
+    apiCall('getUnplacedStudents', {token: TOKEN})
+  ]);
+  // If both fail (e.g. old Apps Script not yet redeployed), keep section hidden silently
+  if(!mine && !unplaced) return;
+  const section = document.getElementById('rosterSection');
+  section.style.display = '';
+
+  // Render "my students"
+  const myList = document.getElementById('myStudentsList');
+  const myBlock = document.getElementById('myStudentsBlock');
+  const myStudents = (mine && mine.students) || [];
+  if(myStudents.length === 0){
+    myList.innerHTML = '<div class="roster-empty">עדיין לא סימנת תלמידים. לאחר שתסמן/י, הם יופיעו כאן.</div>';
+  } else {
+    myList.innerHTML = myStudents.map(s => {
+      const dateStr = s.placedDate ? new Date(s.placedDate).toLocaleDateString('he-IL') : '';
+      return `<div class="my-student-row">
+        <div><span class="name">${esc(s.fullName)}</span>${dateStr ? `<span class="date">· סומן ב-${esc(dateStr)}</span>`:''}</div>
+        <button class="release-btn" data-id="${esc(s.id)}" title="ביטול">ביטול</button>
+      </div>`;
+    }).join('');
+    myList.querySelectorAll('.release-btn').forEach(btn => {
+      btn.addEventListener('click', () => onRelease(btn.getAttribute('data-id'), btn));
+    });
+  }
+  myBlock.style.display = '';
+
+  // Render unplaced dropdown
+  const sel = document.getElementById('unplacedSelect');
+  const unplacedList = (unplaced && unplaced.students) || [];
+  sel.innerHTML = '<option value="">— בחר/י תלמיד —</option>' + unplacedList.map(s =>
+    `<option value="${esc(s.id)}">${esc(s.fullName)}</option>`
+  ).join('');
+  document.getElementById('claimBtn').disabled = true;
+}
+
+async function onClaim(){
+  const sel = document.getElementById('unplacedSelect');
+  const id = sel.value;
+  if(!id) return;
+  const studentName = sel.options[sel.selectedIndex].textContent;
+  const btn = document.getElementById('claimBtn');
+  btn.disabled = true; btn.textContent = 'מסמן...';
+  const r = await apiCall('claimStudent', {token: TOKEN, id});
+  btn.textContent = 'אני לוקח/ת';
+  if(!r || r.error){
+    const errKey = r && r.error;
+    let msg = 'הסימון נכשל.';
+    if(errKey === 'already_claimed') msg = 'תלמיד זה כבר סומן ע״י מדריך אחר.';
+    else if(errKey === 'not_found') msg = 'תלמיד זה כבר לא ברשימה.';
+    else if(errKey === 'invalid_token') msg = 'הקישור האישי שלך אינו תקין. פנה/י לרכז/ת.';
+    else if(r && r.message) msg = msg + ' ' + r.message;
+    showRosterMsg(msg, 'err');
+    btn.disabled = false;
+    return;
+  }
+  showRosterMsg(`✓ ${studentName} סומן/ה אצלך.`, 'ok');
+  await refreshRoster();
+}
+
+async function onRelease(id, btn){
+  if(!confirm('לבטל את השיבוץ?')) return;
+  btn.disabled = true;
+  const r = await apiCall('unclaimStudent', {token: TOKEN, id});
+  if(!r || r.error){
+    showRosterMsg('הביטול נכשל.', 'err');
+    btn.disabled = false;
+    return;
+  }
+  showRosterMsg('השיבוץ בוטל.', 'ok');
+  await refreshRoster();
+}
+
+function showRosterMsg(text, kind){
+  const el = document.getElementById('rosterMsg');
+  el.className = 'roster-msg show ' + kind;
+  el.textContent = text;
+  setTimeout(() => el.classList.remove('show'), 4000);
+}
+
+function esc(s){
+  return String(s == null ? '' : s).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 }
 
 function openSettings(){
