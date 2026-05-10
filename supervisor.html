@@ -59,6 +59,35 @@
     padding:4px 10px;border-radius:8px;background:var(--bg);min-width:80px;text-align:center;
   }
   .save-status.saved{background:var(--success-soft);color:var(--success)}
+  .save-status.saving{background:#fef3c7;color:#92400e}
+  .save-status.failed{background:var(--error-soft);color:var(--error)}
+
+  /* ===== Missing fields panel ===== */
+  .missing-panel{
+    background:#fffbeb;border:1.5px solid #fcd34d;border-radius:14px;
+    padding:14px 18px;margin-bottom:14px;
+  }
+  .missing-panel.complete{
+    background:var(--success-soft);border-color:#a7e3c4;
+  }
+  .missing-panel-title{
+    font-size:13.5px;font-weight:700;color:#92400e;
+    display:flex;align-items:center;gap:8px;margin:0 0 6px;
+  }
+  .missing-panel.complete .missing-panel-title{color:var(--success)}
+  .missing-panel-help{font-size:13px;color:var(--ink-soft);margin:0 0 10px;line-height:1.45}
+  .missing-panel-help.complete-text{color:var(--success);margin:0}
+  .missing-list{
+    list-style:none;padding:0;margin:0;display:flex;flex-wrap:wrap;gap:6px;
+  }
+  .missing-list li{
+    background:white;border:1px solid #fcd34d;color:#78350f;
+    padding:4px 10px;border-radius:999px;font-size:12.5px;font-weight:500;
+  }
+  .auto-save-note{
+    text-align:center;font-size:12px;color:var(--muted);
+    margin:6px 0 0;padding:0 8px;line-height:1.5;
+  }
 
   /* ===== Section card ===== */
   .section{
@@ -417,14 +446,26 @@
     </div>
   </div>
 
+  <!-- ===== Missing fields panel ===== -->
+  <div class="missing-panel" id="missingPanel" style="display:none">
+    <div class="missing-panel-title" id="missingTitle">
+      <span>📝</span> <span>נשאר עוד למלא לפני פרסום</span>
+    </div>
+    <p class="missing-panel-help" id="missingHelp">
+      הפרופיל יתפרסם רק כשכל השדות החובה ימולאו. הנתונים נשמרים אוטומטית — אפשר לעצור עכשיו ולחזור בכל רגע.
+    </p>
+    <ul class="missing-list" id="missingList"></ul>
+  </div>
+
   <!-- ===== Footer ===== -->
   <div class="footer-save">
     <button class="btn btn-secondary" id="btnSave">שמור טיוטה</button>
     <button class="btn btn-primary" id="btnPublish">פרסם פרופיל</button>
   </div>
 
-  <p style="text-align:center;font-size:12px;color:var(--muted);margin:18px 0 8px">
-    ניתן לחזור ולערוך בכל שלב. שמור את הקישור האישי שקיבלת מהצוות.
+  <p class="auto-save-note">
+    ✓ הנתונים נשמרים אוטומטית עם כל שינוי. ניתן לסגור ולחזור — לא יאבד דבר.<br>
+    "פרסם פרופיל" הוא הצעד שהופך את הפרופיל לגלוי לתלמידים (אחרי שכל השדות מולאו).
   </p>
 
   <footer class="page-footer">
@@ -604,13 +645,94 @@ function onFormatChange(val){
 }
 
 /* ===== Save state ===== */
+let _autoSaveTimer = null;
+let _autoSavingNow = false;
+
+function setSaveStatus(state, text){
+  const el = document.getElementById('saveStatus');
+  el.classList.remove('saved','saving','failed');
+  if(state) el.classList.add(state);
+  el.textContent = text;
+}
+
 function markUnsaved(){
-  document.getElementById('saveStatus').textContent = 'לא נשמר';
-  document.getElementById('saveStatus').classList.remove('saved');
+  setSaveStatus(null, 'לא נשמר');
+  updateMissingPanel();
+  scheduleAutoSave();
 }
 function markSaved(){
-  document.getElementById('saveStatus').textContent = '✓ נשמר';
-  document.getElementById('saveStatus').classList.add('saved');
+  setSaveStatus('saved', '✓ נשמר אוטומטית');
+}
+
+function scheduleAutoSave(){
+  // Skip auto-save in demo mode (no token / no backend) — localStorage already covers it
+  if(!LIVE || !TOKEN) {
+    // Still cache to localStorage so it survives a refresh
+    try{ localStorage.setItem('supervisor-draft', JSON.stringify(profile)); }catch(e){}
+    return;
+  }
+  if(_autoSaveTimer) clearTimeout(_autoSaveTimer);
+  _autoSaveTimer = setTimeout(autoSaveNow, 800);
+}
+
+async function autoSaveNow(){
+  if(_autoSavingNow) return;
+  _autoSavingNow = true;
+  setSaveStatus('saving', 'שומר…');
+  try{
+    const r = await apiCall('saveSupervisor', {token: TOKEN, data: JSON.stringify(profile)});
+    if(r && r.ok) markSaved();
+    else setSaveStatus('failed', '✗ שמירה נכשלה');
+  }catch(e){
+    setSaveStatus('failed', '✗ שמירה נכשלה');
+  }finally{
+    _autoSavingNow = false;
+  }
+}
+
+/* Live missing-fields panel — runs on every field change */
+function getMissingFields(){
+  // Mirror of validate() but read-only (no trim mutation)
+  const missing = [];
+  if(!(profile.fullName || '').trim()) missing.push('שם מלא');
+  if(!(profile.credential || '').trim()) missing.push('תואר / הסמכה');
+  if(!profile.yearsSupervising) missing.push('שנות ניסיון');
+  if(!profile.orientations.length) missing.push('סוגי טיפול');
+  if(!profile.populations.length) missing.push('אוכלוסיות');
+  const styleLen = (profile.styleText || '').trim().length;
+  if(styleLen < 50) missing.push(styleLen === 0 ? 'על הסגנון שלי' : `על הסגנון שלי (${styleLen}/50 תווים)`);
+  if(!profile.format) missing.push('פורמט');
+  if(profile.format && profile.format !== 'מקוון' && !profile.area) missing.push('אזור');
+  if(!Object.keys(profile.availability).length) missing.push('זמינות שבועית');
+  const phone = (profile.contact.phone || '').trim();
+  const email = (profile.contact.email || '').trim();
+  if(!phone && !email) missing.push('טלפון או מייל');
+  return missing;
+}
+
+function updateMissingPanel(){
+  const panel = document.getElementById('missingPanel');
+  const list = document.getElementById('missingList');
+  const title = document.getElementById('missingTitle');
+  const help = document.getElementById('missingHelp');
+  if(!panel) return;
+  const missing = getMissingFields();
+
+  if(missing.length === 0){
+    panel.style.display = '';
+    panel.classList.add('complete');
+    title.innerHTML = '<span>✓</span> <span>הפרופיל מוכן לפרסום</span>';
+    list.innerHTML = '';
+    help.className = 'missing-panel-help complete-text';
+    help.textContent = 'כל השדות מולאו. אפשר ללחוץ "פרסם פרופיל" כדי שהוא יופיע במאגר.';
+    return;
+  }
+  panel.style.display = '';
+  panel.classList.remove('complete');
+  title.innerHTML = `<span>📝</span> <span>נשאר עוד למלא לפני פרסום (${missing.length})</span>`;
+  help.className = 'missing-panel-help';
+  help.textContent = 'הפרופיל יתפרסם רק כשכל השדות החובה ימולאו. הנתונים נשמרים אוטומטית — אפשר לעצור עכשיו ולחזור בכל רגע.';
+  list.innerHTML = missing.map(f => `<li>${esc(f)}</li>`).join('');
 }
 
 /* ===== Init ===== */
@@ -657,6 +779,11 @@ async function init(){
   document.getElementById('btnPublish').addEventListener('click', publish);
   document.getElementById('settingsCog').addEventListener('click', openSettings);
   if(!LIVE) document.getElementById('demoBadge').style.display='inline-block';
+
+  // Show "what's missing" panel from the start so the user sees the path forward
+  updateMissingPanel();
+  // If we loaded an existing profile from server, that data is already saved — show "saved"
+  if(LIVE && TOKEN && loaded) markSaved();
 
   // Roster (only meaningful with a token + live backend)
   if(LIVE && TOKEN){
