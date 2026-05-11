@@ -465,7 +465,7 @@
 
   <p class="auto-save-note">
     ✓ הנתונים נשמרים אוטומטית עם כל שינוי. ניתן לסגור ולחזור — לא יאבד דבר.<br>
-    "פרסם פרופיל" הוא הצעד שהופך את הפרופיל לגלוי לתלמידים (אחרי שכל השדות מולאו).
+    "פרסם פרופיל" הוא הצעד שהופך את הפרופיל לגלוי לתלמידים — ניתן גם לפרסם פרופיל חלקי ולהשלים מאוחר יותר.
   </p>
 
   <footer class="page-footer">
@@ -731,7 +731,7 @@ function updateMissingPanel(){
   panel.classList.remove('complete');
   title.innerHTML = `<span>📝</span> <span>נשאר עוד למלא לפני פרסום (${missing.length})</span>`;
   help.className = 'missing-panel-help';
-  help.textContent = 'הפרופיל יתפרסם רק כשכל השדות החובה ימולאו. הנתונים נשמרים אוטומטית — אפשר לעצור עכשיו ולחזור בכל רגע.';
+  help.textContent = 'הנתונים נשמרים אוטומטית — אפשר לעצור עכשיו ולחזור בכל רגע. אפשר גם לפרסם פרופיל חלקי ולהשלים אחר כך, או להמתין ולפרסם רק כשהוא שלם.';
   list.innerHTML = missing.map(f => `<li>${esc(f)}</li>`).join('');
 }
 
@@ -974,8 +974,11 @@ async function saveDraft(){
 async function publish(){
   const errors = validate();
   if(errors.length){
-    alert('חסרים שדות:\n\n· ' + errors.join('\n· '));
-    return;
+    const proceed = confirm(
+      'הפרופיל אינו מלא. השדות הבאים חסרים:\n\n· ' + errors.join('\n· ') +
+      '\n\nאפשר לפרסם בכל זאת — תלמידים יראו את הפרופיל כמו שהוא, ואת/ה תוכל/י להוסיף את השאר בכל רגע (גם אחרי הפרסום).\n\nלפרסם בכל זאת?'
+    );
+    if(!proceed) return;
   }
   profile.published = true;
   if(LIVE && TOKEN){

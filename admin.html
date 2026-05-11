@@ -152,11 +152,25 @@
   .bulk-paste button{padding:8px 14px;border-radius:8px;font-weight:600;font-size:13.5px}
   .bulk-paste button.primary{background:var(--accent);color:white}
   .bulk-paste button.cancel{background:var(--bg);color:var(--ink-soft)}
-  .student-status{font-size:13px}
-  .student-status.placed{color:var(--available);font-weight:600}
-  .student-status.waiting{color:var(--warn);font-weight:600}
+  .student-status{font-size:13px;display:inline-block;padding:3px 10px;border-radius:999px;font-weight:600}
+  .student-status.placed{background:#dcf3e7;color:#0f6e4a}
+  .student-status.waiting{background:#fef3c7;color:#92400e}
   .student-row select{padding:5px 8px;border:1px solid var(--border);border-radius:6px;background:white;font-size:13px;font-family:inherit;color:var(--ink);max-width:180px}
   .student-row select:focus{outline:none;border-color:var(--accent)}
+  .student-row.waiting-row{background:#fffbeb}
+  .student-row.waiting-row:hover{background:#fef3c7}
+  .student-row.placed-row{background:#f7fbf9}
+  .student-row.placed-row:hover{background:#e8f5ee}
+  .student-row.placed-row .name-cell{color:var(--ink-soft)}
+  .student-section-header td{
+    background:var(--bg);font-weight:700;color:var(--ink);
+    padding:10px 14px;font-size:13px;letter-spacing:.02em;
+    border-top:2px solid var(--border);border-bottom:1px solid var(--border);
+  }
+  .student-section-header.first td{border-top:0}
+  .student-section-header .count{color:var(--muted);font-weight:500;margin-inline-start:6px;font-size:12.5px}
+  .student-section-header.waiting-header td{background:#fffbeb;color:#92400e;border-top-color:#fcd34d}
+  .student-section-header.placed-header td{background:#f0f9f4;color:#0f6e4a;border-top-color:#a7e3c4}
   .row-action{padding:5px 9px;border-radius:6px;font-size:12px;background:transparent;color:var(--muted)}
   .row-action.danger:hover{background:#fee2e2;color:#991b1b}
   .row-action.edit:hover{background:var(--accent-soft);color:var(--accent-strong)}
@@ -390,32 +404,24 @@ function renderStudents(students, supervisors){
     </div>`;
     return;
   }
-  counts.innerHTML = `<b>${students.length}</b> תלמידים · <b>${placed}</b> שובצו · <b>${waiting}</b> ממתינים`;
+  counts.innerHTML = `סה״כ <b>${students.length}</b> תלמידים · <span style="color:#0f6e4a"><b>${placed}</b> שובצו</span> · <span style="color:#92400e"><b>${waiting}</b> ממתינים</span>`;
 
-  // Sort: waiting first (alphabetical), then placed (alphabetical)
-  const sorted = students.slice().sort((a,b)=>{
-    const ap = !!a.placedWith, bp = !!b.placedWith;
-    if(ap !== bp) return ap ? 1 : -1;
-    return String(a.fullName).localeCompare(String(b.fullName));
-  });
+  // Split into waiting + placed, alphabetical within each
+  const byName = (a,b) => String(a.fullName).localeCompare(String(b.fullName));
+  const waitingList = students.filter(s => !s.placedWith).sort(byName);
+  const placedList = students.filter(s => !!s.placedWith).sort(byName);
 
   // Build supervisor dropdown options once
   const supOpts = supervisors.map(s => `<option value="${esc(s.token)}">${esc(s.fullName)}</option>`).join('');
 
-  let html = `<table>
-    <thead><tr>
-      <th>שם</th>
-      <th>פרטי קשר</th>
-      <th>סטטוס שיבוץ</th>
-      <th>פעולות</th>
-    </tr></thead>
-    <tbody>`;
-  sorted.forEach(s => {
+  function renderRow(s){
     const phoneStr = s.phone ? String(s.phone).replace(/^(\d)/, '0$1').replace(/^00/, '0') : '';
-    const status = s.placedWith
+    const isPlaced = !!s.placedWith;
+    const status = isPlaced
       ? `<span class="student-status placed">✓ שובץ אצל ${esc(s.placedWithName || '—')}</span>`
-      : `<span class="student-status waiting">○ ממתין</span>`;
-    html += `<tr class="student-row" data-id="${esc(s.id)}">
+      : `<span class="student-status waiting">○ ממתין לשיבוץ</span>`;
+    const rowClass = isPlaced ? 'student-row placed-row' : 'student-row waiting-row';
+    return `<tr class="${rowClass}" data-id="${esc(s.id)}">
       <td class="name-cell" data-label="שם">${esc(s.fullName)}</td>
       <td data-label="קשר"><div class="contact-mini">${s.email ? `<a href="mailto:${esc(s.email)}">${esc(s.email)}</a><br>`:''}${phoneStr ? `<a href="tel:${esc(phoneStr)}">${esc(phoneStr)}</a>`:''}</div></td>
       <td data-label="שיבוץ">
@@ -431,9 +437,30 @@ function renderStudents(students, supervisors){
         <button class="row-action danger" data-action="delete" data-id="${esc(s.id)}" title="מחק">🗑</button>
       </td>
     </tr>`;
-  });
+  }
+
+  let html = `<table>
+    <thead><tr>
+      <th>שם</th>
+      <th>פרטי קשר</th>
+      <th>סטטוס שיבוץ</th>
+      <th>פעולות</th>
+    </tr></thead>
+    <tbody>`;
+
+  if(waitingList.length > 0){
+    html += `<tr class="student-section-header waiting-header first"><td colspan="4">⏳ ממתינים לשיבוץ <span class="count">(${waitingList.length})</span></td></tr>`;
+    waitingList.forEach(s => { html += renderRow(s); });
+  }
+  if(placedList.length > 0){
+    const cls = waitingList.length === 0 ? 'first' : '';
+    html += `<tr class="student-section-header placed-header ${cls}"><td colspan="4">✓ שובצו <span class="count">(${placedList.length})</span></td></tr>`;
+    placedList.forEach(s => { html += renderRow(s); });
+  }
+
   html += '</tbody></table>';
   c.innerHTML = html;
+  const sorted = [...waitingList, ...placedList];
 
   // Pre-select current placement value in each dropdown
   sorted.forEach(s => {
