@@ -94,6 +94,25 @@
   .num-students{font-size:16px;font-weight:700;color:var(--ink)}
   .num-students.zero{color:var(--muted);font-weight:500}
 
+  /* Supervisor table — group rows by spot availability */
+  tbody tr.sup-row.has-spot{background:#f7fbf9}
+  tbody tr.sup-row.has-spot:hover{background:#e8f5ee}
+  tbody tr.sup-row.no-spot{background:#fdf6f6}
+  tbody tr.sup-row.no-spot:hover{background:#f9e8e8}
+  tbody tr.sup-row.draft{background:#fafafa}
+  tbody tr.sup-row.draft:hover{background:#f0f0ed}
+  tbody tr.sup-row.draft .name-cell{color:var(--ink-soft)}
+  tr.sup-section-header td{
+    background:var(--bg);font-weight:700;color:var(--ink);
+    padding:10px 14px;font-size:13px;letter-spacing:.02em;
+    border-top:2px solid var(--border);border-bottom:1px solid var(--border);
+  }
+  tr.sup-section-header.first td{border-top:0}
+  tr.sup-section-header .count{color:var(--muted);font-weight:500;margin-inline-start:6px;font-size:12.5px}
+  tr.sup-section-header.has-spot-header td{background:#f0f9f4;color:#0f6e4a;border-top-color:#a7e3c4}
+  tr.sup-section-header.no-spot-header td{background:#fef2f2;color:#9b1c1c;border-top-color:#fca5a5}
+  tr.sup-section-header.draft-header td{background:#fafafa;color:var(--ink-soft);border-top-color:#d4d4d4}
+
   .contact-mini{font-size:12px;color:var(--muted);direction:ltr;text-align:right}
   .contact-mini a{color:var(--accent);text-decoration:none}
   .contact-mini a:hover{text-decoration:underline}
@@ -255,7 +274,7 @@
   <div class="table-card">
     <div class="table-head">
       <h2>פירוט לפי מדריך</h2>
-      <p class="desc">מסודר לפי מספר תלמידים. לחיצה על "ערוך" פותחת את פרופיל המדריך לעריכה ישירה (בלשונית חדשה).</p>
+      <p class="desc">מחולק לקבוצות: פנויים לקבל / מלאים / טרם פרסמו. בכל קבוצה מסודר לפי מספר תלמידים. לחיצה על "ערוך" פותחת את פרופיל המדריך בלשונית חדשה.</p>
     </div>
     <div id="tableContainer"></div>
   </div>
@@ -530,6 +549,26 @@ function renderTable(supervisors){
     c.innerHTML = '<div class="empty-state"><div class="ic">∅</div><p>אין עדיין מדריכים רשומים.</p></div>';
     return;
   }
+
+  // Three groups: published+hasSpot, published+!hasSpot, !published (drafts)
+  // Within each group, keep existing sort (already sorted by getAdminStats: by accepted desc, by name)
+  const hasSpot = supervisors.filter(s => s.published && s.hasSpot);
+  const noSpot  = supervisors.filter(s => s.published && !s.hasSpot);
+  const drafts  = supervisors.filter(s => !s.published);
+
+  function renderRow(s, rowClass){
+    const phoneStr = s.phone ? String(s.phone).replace(/^(\d)/, '0$1').replace(/^00/, '0') : '';
+    const editLink = s.token ? `supervisor.html?token=${encodeURIComponent(s.token)}` : '';
+    return `<tr class="sup-row ${rowClass}">
+      <td class="name-cell" data-label="מדריך">${esc(s.fullName)}<span class="credential">${esc(s.credential)}</span></td>
+      <td data-label="תלמידים"><span class="num-students${s.studentsAccepted === 0 ? ' zero':''}">${s.studentsAccepted}</span></td>
+      <td data-label="מקום פנוי"><span class="badge ${s.hasSpot ? 'spot-yes' : 'spot-no'}">${s.hasSpot ? '✓ יש מקום' : '× אין מקום'}</span></td>
+      <td data-label="פרסום"><span class="badge ${s.published ? 'published' : 'unpublished'}">${s.published ? '● מפורסם' : '○ טיוטה'}</span></td>
+      <td data-label="קשר"><div class="contact-mini">${s.email ? `<a href="mailto:${esc(s.email)}">${esc(s.email)}</a><br>`:''}${phoneStr ? `<a href="tel:${esc(phoneStr)}">${esc(phoneStr)}</a>`:''}</div></td>
+      <td data-label="פעולה">${editLink ? `<a class="edit-btn" href="${editLink}" target="_blank" rel="noopener">✎ ערוך</a>` : '—'}</td>
+    </tr>`;
+  }
+
   let html = `<table>
     <thead><tr>
       <th>מדריך</th>
@@ -540,18 +579,23 @@ function renderTable(supervisors){
       <th>פעולה</th>
     </tr></thead>
     <tbody>`;
-  supervisors.forEach(s=>{
-    const phoneStr = s.phone ? String(s.phone).replace(/^(\d)/, '0$1').replace(/^00/, '0') : '';
-    const editLink = s.token ? `supervisor.html?token=${encodeURIComponent(s.token)}` : '';
-    html += `<tr>
-      <td class="name-cell" data-label="מדריך">${esc(s.fullName)}<span class="credential">${esc(s.credential)}</span></td>
-      <td data-label="תלמידים"><span class="num-students${s.studentsAccepted === 0 ? ' zero':''}">${s.studentsAccepted}</span></td>
-      <td data-label="מקום פנוי"><span class="badge ${s.hasSpot ? 'spot-yes' : 'spot-no'}">${s.hasSpot ? '✓ יש מקום' : '× אין מקום'}</span></td>
-      <td data-label="פרסום"><span class="badge ${s.published ? 'published' : 'unpublished'}">${s.published ? '● מפורסם' : '○ טיוטה'}</span></td>
-      <td data-label="קשר"><div class="contact-mini">${s.email ? `<a href="mailto:${esc(s.email)}">${esc(s.email)}</a><br>`:''}${phoneStr ? `<a href="tel:${esc(phoneStr)}">${esc(phoneStr)}</a>`:''}</div></td>
-      <td data-label="פעולה">${editLink ? `<a class="edit-btn" href="${editLink}" target="_blank" rel="noopener">✎ ערוך</a>` : '—'}</td>
-    </tr>`;
-  });
+
+  let isFirst = true;
+  if(hasSpot.length > 0){
+    html += `<tr class="sup-section-header has-spot-header${isFirst ? ' first':''}"><td colspan="6">✓ פנויים לקבל תלמידים <span class="count">(${hasSpot.length})</span></td></tr>`;
+    hasSpot.forEach(s => { html += renderRow(s, 'has-spot'); });
+    isFirst = false;
+  }
+  if(noSpot.length > 0){
+    html += `<tr class="sup-section-header no-spot-header${isFirst ? ' first':''}"><td colspan="6">× מלאים — אין מקום פנוי <span class="count">(${noSpot.length})</span></td></tr>`;
+    noSpot.forEach(s => { html += renderRow(s, 'no-spot'); });
+    isFirst = false;
+  }
+  if(drafts.length > 0){
+    html += `<tr class="sup-section-header draft-header${isFirst ? ' first':''}"><td colspan="6">○ טרם פרסמו פרופיל <span class="count">(${drafts.length})</span></td></tr>`;
+    drafts.forEach(s => { html += renderRow(s, 'draft'); });
+  }
+
   html += '</tbody></table>';
   c.innerHTML = html;
 }
