@@ -42,7 +42,8 @@ const SUPERVISOR_COLS = [
   'availability', 'hasSpot',
   'phone', 'whatsappEnabled', 'email',
   'studentsAccepted',
-  'mailed'   // TRUE after claim/registration email sent
+  'mailed',         // TRUE after claim/registration email sent
+  'maxStudents'     // capacity stated by supervisor (form, May 2026). ADMIN-ONLY — never sent to students.
 ];
 
 /* ========== Routing ========== */
@@ -254,7 +255,8 @@ function getSupervisor(p) {
         email: r.email || ''
       },
       published: r.published === true || r.published === 'TRUE' || r.published === 'true',
-      studentsAccepted: Number(r.studentsAccepted) || 0
+      studentsAccepted: Number(r.studentsAccepted) || 0,
+      maxStudents: r.maxStudents === '' || r.maxStudents == null ? '' : Number(r.maxStudents)
     }
   };
 }
@@ -270,6 +272,7 @@ function saveSupervisor(p) {
     return { error: 'bad_json' };
   }
 
+  ensureMaxStudentsColumn();
   const sheet = getOrCreateSupervisorsSheet();
   const allValues = sheet.getDataRange().getValues();
   const headers = allValues[0];
@@ -300,7 +303,8 @@ function saveSupervisor(p) {
     whatsappEnabled: !!c.whatsappEnabled,
     email: c.email || '',
     published: !!data.published,
-    studentsAccepted: Math.max(0, Number(data.studentsAccepted) || 0)
+    studentsAccepted: Math.max(0, Number(data.studentsAccepted) || 0),
+    maxStudents: (data.maxStudents === '' || data.maxStudents == null) ? '' : Math.max(0, Number(data.maxStudents) || 0)
   };
 
   for (const [k, v] of Object.entries(updates)) {
@@ -323,6 +327,7 @@ function saveSupervisor(p) {
 
 function getAdminStats(p) {
   requireAdminPin(p);
+  ensureMaxStudentsColumn();
   const rows = readSupervisorRows();
   const students = readStudentRows();
 
@@ -362,6 +367,7 @@ function getAdminStats(p) {
       hasSpot,
       studentsAccepted: accepted,
       selfReportedAccepted: selfReported,
+      maxStudents: (r.maxStudents === '' || r.maxStudents == null) ? '' : Number(r.maxStudents),
       email: r.email || '',
       phone: r.phone || ''
     };
@@ -1060,6 +1066,22 @@ function ensureMailedColumn() {
     sheet.getRange(2, newCol, lastRow - 1, 1).setValues(vals);
   }
   Logger.log('Added "mailed" column to Supervisors. Existing rows defaulted to TRUE.');
+}
+
+/**
+ * Adds the "maxStudents" column to the Supervisors tab if missing.
+ * Admin-only capacity field (how many supervisees the supervisor can take).
+ * Existing rows default to '' (unknown). Safe to run repeatedly.
+ */
+function ensureMaxStudentsColumn() {
+  const sheet = getOrCreateSupervisorsSheet();
+  const lastCol = sheet.getLastColumn();
+  const headers = sheet.getRange(1, 1, 1, lastCol).getValues()[0];
+  if (headers.indexOf('maxStudents') >= 0) return;
+
+  const newCol = lastCol + 1;
+  sheet.getRange(1, newCol).setValue('maxStudents');
+  Logger.log('Added "maxStudents" column to Supervisors (admin-only). Existing rows left blank.');
 }
 
 function sendClaimEmail(toEmail, name, baseUrl) {

@@ -387,6 +387,12 @@
     </div>
 
     <div class="field" style="margin-top:16px">
+      <label class="field-label" for="maxStudents">כמה מודרכים את/ה יכול/ה לקלוט השנה</label>
+      <p class="field-help">הקיבולת המקסימלית שלך לשנה זו. רק המזכירה האקדמית רואה את המספר הזה — לא תלמידים ולא מדריכים אחרים.</p>
+      <input class="input" id="maxStudents" type="number" min="0" max="20" placeholder="—" style="max-width:120px">
+    </div>
+
+    <div class="field" style="margin-top:16px">
       <label class="field-label" for="studentsAccepted">כמה תלמידים אישרת לקבל השנה</label>
       <p class="field-help">עדכן/י את המספר כשאת/ה מאשר/ת תלמיד חדש. רק המזכירה האקדמית רואה את המספרים האלה — לא תלמידים ולא מדריכים אחרים.</p>
       <input class="input" id="studentsAccepted" type="number" min="0" max="20" value="0" style="max-width:120px">
@@ -513,6 +519,7 @@ let profile = {
   availability:{}, hasSpot:true, styleText:'',
   contact:{phone:'', whatsappEnabled:false, email:''},
   studentsAccepted:0,
+  maxStudents:'',
   published:false
 };
 
@@ -613,6 +620,10 @@ document.getElementById('years').addEventListener('input', e=>{
 });
 document.getElementById('studentsAccepted').addEventListener('input', e=>{
   profile.studentsAccepted = Math.max(0, Number(e.target.value) || 0);
+  markUnsaved();
+});
+document.getElementById('maxStudents').addEventListener('input', e=>{
+  profile.maxStudents = e.target.value === '' ? '' : Math.max(0, Number(e.target.value) || 0);
   markUnsaved();
 });
 ['phone','email'].forEach(id=>{
@@ -901,6 +912,7 @@ function restoreUI(){
   document.getElementById('credential').value = profile.credential || '';
   document.getElementById('years').value = profile.yearsSupervising || '';
   document.getElementById('studentsAccepted').value = profile.studentsAccepted || 0;
+  document.getElementById('maxStudents').value = (profile.maxStudents === '' || profile.maxStudents == null) ? '' : profile.maxStudents;
   document.getElementById('styleText').value = profile.styleText || '';
   document.getElementById('styleCount').textContent = (profile.styleText||'').length;
   document.getElementById('phone').value = profile.contact.phone || '';

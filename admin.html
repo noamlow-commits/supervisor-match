@@ -562,6 +562,7 @@ function renderTable(supervisors){
     return `<tr class="sup-row ${rowClass}">
       <td class="name-cell" data-label="מדריך">${esc(s.fullName)}<span class="credential">${esc(s.credential)}</span></td>
       <td data-label="תלמידים"><span class="num-students${s.studentsAccepted === 0 ? ' zero':''}">${s.studentsAccepted}</span></td>
+      <td data-label="קיבולת">${(s.maxStudents === '' || s.maxStudents == null) ? '<span style="color:#aaa">—</span>' : esc(s.maxStudents)}</td>
       <td data-label="מקום פנוי"><span class="badge ${s.hasSpot ? 'spot-yes' : 'spot-no'}">${s.hasSpot ? '✓ יש מקום' : '× אין מקום'}</span></td>
       <td data-label="פרסום"><span class="badge ${s.published ? 'published' : 'unpublished'}">${s.published ? '● מפורסם' : '○ טיוטה'}</span></td>
       <td data-label="קשר"><div class="contact-mini">${s.email ? `<a href="mailto:${esc(s.email)}">${esc(s.email)}</a><br>`:''}${phoneStr ? `<a href="tel:${esc(phoneStr)}">${esc(phoneStr)}</a>`:''}</div></td>
@@ -573,6 +574,7 @@ function renderTable(supervisors){
     <thead><tr>
       <th>מדריך</th>
       <th>תלמידים</th>
+      <th>קיבולת</th>
       <th>מקום פנוי</th>
       <th>סטטוס פרסום</th>
       <th>פרטי קשר</th>
@@ -582,17 +584,17 @@ function renderTable(supervisors){
 
   let isFirst = true;
   if(hasSpot.length > 0){
-    html += `<tr class="sup-section-header has-spot-header${isFirst ? ' first':''}"><td colspan="6">✓ פנויים לקבל תלמידים <span class="count">(${hasSpot.length})</span></td></tr>`;
+    html += `<tr class="sup-section-header has-spot-header${isFirst ? ' first':''}"><td colspan="7">✓ פנויים לקבל תלמידים <span class="count">(${hasSpot.length})</span></td></tr>`;
     hasSpot.forEach(s => { html += renderRow(s, 'has-spot'); });
     isFirst = false;
   }
   if(noSpot.length > 0){
-    html += `<tr class="sup-section-header no-spot-header${isFirst ? ' first':''}"><td colspan="6">× מלאים — אין מקום פנוי <span class="count">(${noSpot.length})</span></td></tr>`;
+    html += `<tr class="sup-section-header no-spot-header${isFirst ? ' first':''}"><td colspan="7">× מלאים — אין מקום פנוי <span class="count">(${noSpot.length})</span></td></tr>`;
     noSpot.forEach(s => { html += renderRow(s, 'no-spot'); });
     isFirst = false;
   }
   if(drafts.length > 0){
-    html += `<tr class="sup-section-header draft-header${isFirst ? ' first':''}"><td colspan="6">○ טרם פרסמו פרופיל <span class="count">(${drafts.length})</span></td></tr>`;
+    html += `<tr class="sup-section-header draft-header${isFirst ? ' first':''}"><td colspan="7">○ טרם פרסמו פרופיל <span class="count">(${drafts.length})</span></td></tr>`;
     drafts.forEach(s => { html += renderRow(s, 'draft'); });
   }
 
