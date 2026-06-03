@@ -206,9 +206,21 @@ function getSupervisors(p) {
   return { supervisors: published.map(toClientSupervisor) };
 }
 
+function publicSupervisorId(token) {
+  // Non-reversible public id derived from the token. The raw token is a password
+  // (it grants edit access via supervisor.html?token=...), so it must NEVER be sent
+  // to the student-facing client — a student could otherwise read it from the network
+  // response and open the supervisor's private editor (which shows student names).
+  if (!token) return '';
+  var bytes = Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, String(token));
+  return Utilities.base64EncodeWebSafe(bytes).replace(/[^A-Za-z0-9]/g, '').substring(0, 12);
+}
+
 function toClientSupervisor(r) {
   return {
-    id: r.token,
+    // Public, non-reversible id (hash of the token) — NOT the token itself. See
+    // publicSupervisorId(). The student page doesn't use this; kept for shape parity.
+    id: publicSupervisorId(r.token),
     fullName: r.fullName,
     credential: r.credential,
     yearsSupervising: Number(r.yearsSupervising) || 0,
