@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="utf-8">
+<base target="_top">
+<style>
+  :root{
+    --bg:#f4f6f8; --panel:#ffffff; --ink:#1f2d3a; --muted:#6b7b8a;
+    --line:#e2e8ee; --teal:#2c7a7b; --teal-d:#225e5f; --slate:#1f3a4d;
+    --warn:#c98a00; --warn-bg:#fff7e0; --closed:#9aa7b1; --ok:#2f855a;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;font-family:"Segoe UI",Arial,sans-serif;background:var(--bg);color:var(--ink);font-size:14px}
+  header{background:var(--slate);color:#fff;padding:12px 18px;display:flex;align-items:center;gap:16px;flex-wrap:wrap}
+  header h1{font-size:18px;margin:0;font-weight:600}
+  header .sp{flex:1}
+  .tabs button,.btn{background:#ffffff22;color:#fff;border:1px solid #ffffff44;border-radius:7px;padding:7px 13px;cursor:pointer;font-size:13px}
+  .tabs button.active{background:#fff;color:var(--slate);font-weight:600}
+  .btn{background:var(--teal);border-color:var(--teal)}
+  .btn:hover{background:var(--teal-d)}
+  .bar{display:flex;gap:10px;align-items:center;padding:10px 18px;background:var(--panel);border-bottom:1px solid var(--line);flex-wrap:wrap}
+  select,input,textarea{font-family:inherit;font-size:13px;border:1px solid var(--line);border-radius:6px;padding:6px 8px;background:#fff}
+  .board{display:flex;gap:12px;padding:16px;overflow-x:auto;align-items:flex-start}
+  .col{background:var(--panel);border:1px solid var(--line);border-radius:10px;min-width:230px;max-width:230px;flex:0 0 auto}
+  .col h3{margin:0;padding:10px 12px;font-size:13px;border-bottom:1px solid var(--line);position:sticky;top:0;background:var(--panel);border-radius:10px 10px 0 0}
+  .col h3 .n{color:var(--muted);font-weight:400}
+  .cards{padding:8px;display:flex;flex-direction:column;gap:8px;min-height:30px}
+  .card{border:1px solid var(--line);border-radius:8px;padding:9px;cursor:pointer;background:#fff;transition:.1s}
+  .card:hover{border-color:var(--teal);box-shadow:0 1px 6px #0001}
+  .card.rem{border-right:4px solid var(--warn);background:var(--warn-bg)}
+  .card .nm{font-weight:600}
+  .card .meta{color:var(--muted);font-size:12px;margin-top:3px}
+  .pill{display:inline-block;font-size:11px;padding:1px 7px;border-radius:20px;background:#eef3f6;color:var(--slate);margin-top:5px}
+  .pill.rem{background:#fde9b8;color:#7a5400}
+  /* dashboard */
+  .dash{padding:18px;display:grid;gap:16px;grid-template-columns:1fr 1fr}
+  .panel{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px}
+  .panel h2{margin:0 0 10px;font-size:15px}
+  table{width:100%;border-collapse:collapse;font-size:13px}
+  th,td{text-align:right;padding:5px 7px;border-bottom:1px solid var(--line)}
+  th{color:var(--muted);font-weight:600}
+  .funnel td:first-child{white-space:nowrap}
+  .barfill{height:10px;background:var(--teal);border-radius:5px;display:inline-block;vertical-align:middle}
+  /* modal */
+  .ov{position:fixed;inset:0;background:#0006;display:none;align-items:flex-start;justify-content:center;padding:30px 12px;overflow:auto}
+  .ov.show{display:flex}
+  .modal{background:#fff;border-radius:12px;width:min(640px,100%);padding:0;max-height:90vh;overflow:auto}
+  .modal .mh{position:sticky;top:0;background:var(--slate);color:#fff;padding:13px 16px;display:flex;align-items:center;gap:10px;border-radius:12px 12px 0 0}
+  .modal .mh h2{font-size:16px;margin:0;flex:1}
+  .modal .mb{padding:14px 16px}
+  .grp{margin-bottom:14px}
+  .grp h4{margin:0 0 7px;font-size:12px;color:var(--teal-d);border-bottom:1px solid var(--line);padding-bottom:3px}
+  .fields{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+  .f{display:flex;flex-direction:column;gap:3px}
+  .f.full{grid-column:1/3}
+  .f label{font-size:11px;color:var(--muted)}
+  .f.chk{flex-direction:row;align-items:center;gap:6px}
+  .mf{position:sticky;bottom:0;background:#fff;border-top:1px solid var(--line);padding:11px 16px;display:flex;gap:10px;justify-content:flex-start}
+  .x{cursor:pointer;font-size:20px;line-height:1}
+  #toast{position:fixed;bottom:18px;left:50%;transform:translateX(-50%);background:var(--slate);color:#fff;padding:9px 16px;border-radius:8px;display:none}
+  .empty{color:var(--muted);text-align:center;padding:40px}
+  .spin{color:var(--muted);padding:30px;text-align:center}
+</style>
+</head>
+<body>
+<header>
+  <h1>מעקב פניות · מכון רוטנברג</h1>
+  <div class="tabs">
+    <button id="tab-board" class="active" onclick="show('board')">לוח</button>
+    <button id="tab-dash" onclick="show('dash')">דשבורד</button>
+    <button id="tab-contacts" onclick="show('contacts')">אנשי קשר</button>
+  </div>
+  <span class="sp"></span>
+  <button class="btn" onclick="doImport()">⟳ ייבוא מהקובץ החי</button>
+  <button class="btn" onclick="openNew()">+ פנייה חדשה</button>
+</header>
+
+<div class="bar" id="bar">
+  <label>תוכנית:</label>
+  <select id="progFilter" onchange="render()"><option value="">כל התוכניות</option></select>
+  <label><input type="checkbox" id="remOnly" onchange="render()"> רק שצריך תזכורת</label>
+  <input id="search" placeholder="חיפוש שם/טלפון…" oninput="render()" style="margin-right:auto;width:180px">
+</div>
+
+<div id="view-board"><div class="board" id="board"><div class="spin">טוען…</div></div></div>
+<div id="view-dash" style="display:none"><div class="dash" id="dash"></div></div>
+<div id="view-contacts" style="display:none"><div class="dash" id="contacts" style="grid-template-columns:1fr"></div></div>
+
+<div class="ov" id="ov"><div class="modal" id="modal"></div></div>
+<div id="toast"></div>
+
+<script>
+var DATA = {rows:[], programs:[], stages:[], schema:[]};
+var BYKEY = {};
+
+function show(v){
+  document.getElementById('view-board').style.display = v==='board'?'':'none';
+  document.getElementById('view-dash').style.display  = v==='dash'?'':'none';
+  document.getElementById('view-contacts').style.display = v==='contacts'?'':'none';
+  document.getElementById('bar').style.display = v==='board'?'':'none';
+  document.getElementById('tab-board').classList.toggle('active', v==='board');
+  document.getElementById('tab-dash').classList.toggle('active', v==='dash');
+  document.getElementById('tab-contacts').classList.toggle('active', v==='contacts');
+  if (v==='dash') loadDash();
+  if (v==='contacts') renderContacts();
+}
+
+function load(){
+  google.script.run.withSuccessHandler(function(s){
+    var d = JSON.parse(s);
+    DATA = d; BYKEY={}; d.schema.forEach(function(c){BYKEY[c.key]=c;});
+    var sel = document.getElementById('progFilter');
+    sel.innerHTML = '<option value="">כל התוכניות</option>' +
+      d.programs.map(function(p){return '<option>'+esc(p)+'</option>';}).join('');
+    render();
+  }).withFailureHandler(err).apiBoard();
+}
+
+function render(){
+  var prog = document.getElementById('progFilter').value;
+  var remOnly = document.getElementById('remOnly').checked;
+  var q = document.getElementById('search').value.trim();
+  var rows = DATA.rows.filter(function(r){
+    if (r.recordType==='איש-קשר') return false;   // אנשי קשר מוצגים בלשונית נפרדת
+    if (prog && r.program!==prog) return false;
+    if (remOnly && !r.reminder) return false;
+    if (q && (String(r.name).indexOf(q)<0 && String(r.phone).indexOf(q)<0)) return false;
+    return true;
+  });
+  var board = document.getElementById('board');
+  board.innerHTML = '';
+  DATA.stages.forEach(function(stage){
+    var inStage = rows.filter(function(r){return r.stage===stage;});
+    var col = document.createElement('div'); col.className='col';
+    col.innerHTML = '<h3>'+esc(stage)+' <span class="n">('+inStage.length+')</span></h3>';
+    var cards = document.createElement('div'); cards.className='cards';
+    inStage.forEach(function(r){
+      var c = document.createElement('div');
+      c.className = 'card' + (r.reminder?' rem':'');
+      c.onclick = function(){ openEdit(r.id); };
+      c.innerHTML = '<div class="nm">'+esc(r.name||'(ללא שם)')+'</div>'+
+        '<div class="meta">'+esc(r.program||'')+(r.phone?' · '+esc(r.phone):'')+'</div>'+
+        '<span class="pill'+(r.reminder?' rem':'')+'">'+esc(r.nextAction||'')+
+        (r.daysSince!==''&&r.daysSince!=null?(' · '+r.daysSince+' ימ\'' ):'')+'</span>';
+      cards.appendChild(c);
+    });
+    if (!inStage.length) cards.innerHTML = '<div class="empty" style="padding:14px;font-size:12px">—</div>';
+    col.appendChild(cards); board.appendChild(col);
+  });
+}
+
+function rowById(id){ return DATA.rows.filter(function(r){return r.id===id;})[0]; }
+
+function openEdit(id){ buildModal(rowById(id), false); }
+function openNew(){ buildModal({status:'פנייה חדשה'}, true); }
+
+function buildModal(rec, isNew){
+  var groups = {};
+  DATA.schema.forEach(function(c){
+    if (c.key==='id'||c.group==='מטא'||(c.computed&&isNew)) return;
+    (groups[c.group]=groups[c.group]||[]).push(c);
+  });
+  var html = '<div class="mh"><h2>'+(isNew?'פנייה חדשה':esc(rec.name||'פנייה'))+'</h2>'+
+    (rec.stage?'<span class="pill" style="background:#ffffff22;color:#fff">'+esc(rec.stage)+'</span>':'')+
+    '<span class="x" onclick="closeOv()">×</span></div><div class="mb">';
+  Object.keys(groups).forEach(function(g){
+    html += '<div class="grp"><h4>'+esc(g)+'</h4><div class="fields">';
+    groups[g].forEach(function(c){
+      var v = rec[c.key]; v = (v===undefined||v===null)?'':v;
+      var full = (c.type==='string'&&['recommend','missingForms','noInterest','crmNote','payNote'].indexOf(c.key)>=0)?' full':'';
+      var dis = c.computed?' disabled':'';
+      if (c.type==='bool'){
+        html += '<div class="f chk"><input type="checkbox" id="fld_'+c.key+'"'+(v===true||v==='TRUE'?' checked':'')+dis+'><label for="fld_'+c.key+'">'+esc(c.header)+'</label></div>';
+      } else if (c.options){
+        html += '<div class="f'+full+'"><label>'+esc(c.header)+'</label><select id="fld_'+c.key+'"'+dis+'>'+
+          c.options.map(function(o){return '<option'+(o===v?' selected':'')+'>'+esc(o)+'</option>';}).join('')+'</select></div>';
+      } else if (full){
+        html += '<div class="f full"><label>'+esc(c.header)+'</label><textarea id="fld_'+c.key+'" rows="2"'+dis+'>'+esc(v)+'</textarea></div>';
+      } else {
+        var t = c.type==='date'?'date':(c.type==='number'?'number':'text');
+        html += '<div class="f"><label>'+esc(c.header)+'</label><input type="'+t+'" id="fld_'+c.key+'" value="'+esc(v)+'"'+dis+'></div>';
+      }
+    });
+    html += '</div></div>';
+  });
+  html += '</div><div class="mf"><button class="btn" onclick="save(\''+(isNew?'':rec.id)+'\','+isNew+')">שמירה</button>';
+  if (!isNew && rec.email) html += '<button class="btn" style="background:var(--slate);border-color:var(--slate)" onclick="sendMaterial(\''+rec.id+'\')">✉ שלח חומר</button>';
+  html += '<button class="tabs" style="background:#eee;color:#333;border:1px solid #ccc;border-radius:7px;padding:7px 13px;cursor:pointer" onclick="closeOv()">ביטול</button></div>';
+  document.getElementById('modal').innerHTML = html;
+  document.getElementById('ov').classList.add('show');
+}
+
+function collect(isNew){
+  var patch = {};
+  DATA.schema.forEach(function(c){
+    if (c.group==='מטא'||c.computed||c.key==='id') return;
+    var el = document.getElementById('fld_'+c.key); if (!el) return;
+    patch[c.key] = (c.type==='bool') ? el.checked : el.value;
+  });
+  return patch;
+}
+
+function save(id, isNew){
+  var patch = collect(isNew);
+  toast('שומר…');
+  if (isNew){
+    google.script.run.withSuccessHandler(function(){ closeOv(); toast('נוצרה פנייה'); load(); }).withFailureHandler(err).apiCreate(patch);
+  } else {
+    patch.id = id;
+    google.script.run.withSuccessHandler(function(){ closeOv(); toast('נשמר'); load(); }).withFailureHandler(err).apiUpdate(patch);
+  }
+}
+
+function sendMaterial(id){
+  if (!confirm('לשלוח את מייל החומר לפונה?')) return;
+  toast('שולח…');
+  google.script.run.withSuccessHandler(function(s){ var r=JSON.parse(s); toast('נשלח ל-'+r.to); closeOv(); load(); }).withFailureHandler(err).apiSendMaterial(id);
+}
+
+function doImport(){
+  toast('מייבא מהקובץ החי…');
+  google.script.run.withSuccessHandler(function(s){ var r=JSON.parse(s); toast(r.message); load(); }).withFailureHandler(err).apiImport();
+}
+
+function loadDash(){
+  document.getElementById('dash').innerHTML = '<div class="spin">טוען…</div>';
+  google.script.run.withSuccessHandler(function(s){ renderDash(JSON.parse(s)); }).withFailureHandler(err).apiDashboard();
+}
+function renderDash(d){
+  var html = '';
+  Object.keys(d.byProgram).forEach(function(p){
+    var counts = d.byProgram[p];
+    var max = Math.max.apply(null, d.stages.map(function(s){return counts[s]||0;}).concat([1]));
+    html += '<div class="panel"><h2>'+esc(p)+'</h2><table class="funnel">';
+    d.stages.forEach(function(s){
+      var n = counts[s]||0;
+      html += '<tr><td>'+esc(s)+'</td><td style="width:55%"><span class="barfill" style="width:'+(n/max*100)+'%"></span> '+n+'</td></tr>';
+    });
+    html += '</table></div>';
+  });
+  html += '<div class="panel"><h2>צריך תזכורת ('+d.reminders.length+')</h2><table><tr><th>שם</th><th>תוכנית</th><th>שלב</th><th>ימים</th></tr>'+
+    d.reminders.map(function(r){return '<tr><td><a href="#" onclick="openEdit(\''+r.id+'\');return false">'+esc(r.name)+'</a></td><td>'+esc(r.program)+'</td><td>'+esc(r.stage)+'</td><td>'+r.days+'</td></tr>';}).join('')+'</table></div>';
+  html += '<div class="panel"><h2>תשלומים פתוחים ('+d.outstanding.length+')</h2><table><tr><th>שם</th><th>תוכנית</th><th>חוב</th></tr>'+
+    d.outstanding.map(function(r){return '<tr><td><a href="#" onclick="openEdit(\''+r.id+'\');return false">'+esc(r.name)+'</a></td><td>'+esc(r.program)+'</td><td>'+esc(r.owe)+'</td></tr>';}).join('')+'</table></div>';
+  document.getElementById('dash').innerHTML = html;
+}
+
+function renderContacts(){
+  var list = DATA.rows.filter(function(r){ return r.recordType==='איש-קשר'; });
+  var html = '<div class="panel"><h2>אנשי קשר ('+list.length+')</h2><table>'+
+    '<tr><th>שם</th><th>טלפון</th><th>מייל</th><th>עיסוק</th><th>אזור</th><th>תוכנית/רשימה</th></tr>'+
+    list.map(function(r){
+      return '<tr><td><a href="#" onclick="openEdit(\''+r.id+'\');return false">'+esc(r.name)+'</a></td>'+
+        '<td>'+esc(r.phone)+'</td><td>'+esc(r.email)+'</td><td>'+esc(r.occupation)+'</td>'+
+        '<td>'+esc(r.city)+'</td><td>'+esc(r.program)+'</td></tr>';
+    }).join('')+'</table></div>';
+  document.getElementById('contacts').innerHTML = list.length ? html : '<div class="empty">אין אנשי קשר</div>';
+}
+
+function closeOv(){ document.getElementById('ov').classList.remove('show'); }
+function toast(m){ var t=document.getElementById('toast'); t.textContent=m; t.style.display='block'; clearTimeout(t._t); t._t=setTimeout(function(){t.style.display='none';},2600); }
+function err(e){ toast('שגיאה: '+(e.message||e)); }
+function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];}); }
+document.getElementById('ov').onclick=function(e){ if(e.target===this) closeOv(); };
+load();
+</script>
+</body>
+</html>
