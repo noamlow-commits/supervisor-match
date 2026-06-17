@@ -202,8 +202,9 @@ function sendRegistrationEmail(toEmail, name, personalUrl) {
 function getSupervisors(p) {
   requireClassPin(p);
   const rows = readSupervisorRows();
+  const counts = placedCountsByToken();
   const published = rows.filter(r => r.published === true || r.published === 'TRUE' || r.published === 'true');
-  return { supervisors: published.map(toClientSupervisor) };
+  return { supervisors: published.map(r => toClientSupervisor(r, counts[r.token] || 0)) };
 }
 
 function publicSupervisorId(token) {
@@ -216,7 +217,28 @@ function publicSupervisorId(token) {
   return Utilities.base64EncodeWebSafe(bytes).replace(/[^A-Za-z0-9]/g, '').substring(0, 12);
 }
 
-function toClientSupervisor(r) {
+/* ===== Capacity-based availability (auto-derived from placements) ===== */
+// Tally of placed students per supervisor token, from the Students roster.
+function placedCountsByToken() {
+  const counts = {};
+  readStudentRows().forEach(s => {
+    const t = String(s.placedWith || '').trim();
+    if (t) counts[t] = (counts[t] || 0) + 1;
+  });
+  return counts;
+}
+// True when the supervisor reached/exceeded their stated capacity (maxStudents).
+function isAtCapacity(r, placedCount) {
+  const max = (r.maxStudents === '' || r.maxStudents == null) ? null : Number(r.maxStudents);
+  return max !== null && !isNaN(max) && placedCount >= max;
+}
+// Effective availability shown anywhere: willing to take AND not yet full.
+function effectiveHasSpot(r, placedCount) {
+  const willing = r.hasSpot === true || r.hasSpot === 'TRUE' || r.hasSpot === 'true';
+  return willing && !isAtCapacity(r, placedCount || 0);
+}
+
+function toClientSupervisor(r, placedCount) {
   return {
     // Public, non-reversible id (hash of the token) — NOT the token itself. See
     // publicSupervisorId(). The student page doesn't use this; kept for shape parity.
@@ -231,7 +253,8 @@ function toClientSupervisor(r) {
     format: r.format,
     area: r.area,
     availability: parseAvailability(r.availability),
-    hasSpot: r.hasSpot === true || r.hasSpot === 'TRUE' || r.hasSpot === 'true',
+    // Auto: willing AND under capacity. A full supervisor shows as no-spot to students.
+    hasSpot: effectiveHasSpot(r, placedCount || 0),
     contact: {
       phone: r.phone || '',
       whatsappEnabled: r.whatsappEnabled === true || r.whatsappEnabled === 'TRUE' || r.whatsappEnabled === 'true',
@@ -248,6 +271,7 @@ function getSupervisor(p) {
   const rows = readSupervisorRows();
   const r = rows.find(x => x.token === token);
   if (!r) return { error: 'not_found' };
+  const myPlaced = placedCountsByToken()[token] || 0;
   return {
     profile: {
       fullName: r.fullName,
@@ -268,7 +292,9 @@ function getSupervisor(p) {
       },
       published: r.published === true || r.published === 'TRUE' || r.published === 'true',
       studentsAccepted: Number(r.studentsAccepted) || 0,
-      maxStudents: r.maxStudents === '' || r.maxStudents == null ? '' : Number(r.maxStudents)
+      maxStudents: r.maxStudents === '' || r.maxStudents == null ? '' : Number(r.maxStudents),
+      placedCount: myPlaced,                    // live: students actually assigned to me
+      atCapacity: isAtCapacity(r, myPlaced)     // reached my stated capacity
     }
   };
 }
@@ -363,20 +389,24 @@ function getAdminStats(p) {
 
   const supervisors = rows.map(r => {
     const published = r.published === true || r.published === 'TRUE' || r.published === 'true';
-    const hasSpot = r.hasSpot === true || r.hasSpot === 'TRUE' || r.hasSpot === 'true';
+    const willing = r.hasSpot === true || r.hasSpot === 'TRUE' || r.hasSpot === 'true';
     const selfReported = Number(r.studentsAccepted) || 0;
     const placedFromList = placedPerSupervisor[r.token] || 0;
     // If we have student records, prefer them; otherwise fall back to self-report
     const accepted = students.length > 0 ? placedFromList : selfReported;
+    const atCapacity = isAtCapacity(r, placedFromList);
+    const available = willing && !atCapacity;   // effective availability
     if (published) publishedCount++;
-    if (hasSpot) withSpotCount++;
+    if (available) withSpotCount++;
     totalAccepted += accepted;
     return {
       token: r.token || '',
       fullName: r.fullName || '(ללא שם)',
       credential: r.credential || '',
       published,
-      hasSpot,
+      hasSpot: available,        // effective (drives grouping + badge)
+      willing,                   // the supervisor's manual toggle
+      atCapacity,                // reached maxStudents
       studentsAccepted: accepted,
       selfReportedAccepted: selfReported,
       maxStudents: (r.maxStudents === '' || r.maxStudents == null) ? '' : Number(r.maxStudents),

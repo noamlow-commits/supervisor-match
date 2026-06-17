@@ -563,7 +563,7 @@ function renderTable(supervisors){
       <td class="name-cell" data-label="מדריך">${esc(s.fullName)}<span class="credential">${esc(s.credential)}</span></td>
       <td data-label="תלמידים"><span class="num-students${s.studentsAccepted === 0 ? ' zero':''}">${s.studentsAccepted}</span></td>
       <td data-label="קיבולת">${(s.maxStudents === '' || s.maxStudents == null) ? '<span style="color:#aaa">—</span>' : esc(s.maxStudents)}</td>
-      <td data-label="מקום פנוי"><span class="badge ${s.hasSpot ? 'spot-yes' : 'spot-no'}">${s.hasSpot ? '✓ יש מקום' : '× אין מקום'}</span></td>
+      <td data-label="מקום פנוי"><span class="badge ${s.hasSpot ? 'spot-yes' : 'spot-no'}">${s.hasSpot ? '✓ יש מקום' : (s.atCapacity ? '× מלא (קיבולת)' : '× אין מקום')}</span></td>
       <td data-label="פרסום"><span class="badge ${s.published ? 'published' : 'unpublished'}">${s.published ? '● מפורסם' : '○ טיוטה'}</span></td>
       <td data-label="קשר"><div class="contact-mini">${s.email ? `<a href="mailto:${esc(s.email)}">${esc(s.email)}</a><br>`:''}${phoneStr ? `<a href="tel:${esc(phoneStr)}">${esc(phoneStr)}</a>`:''}</div></td>
       <td data-label="פעולה">${editLink ? `<a class="edit-btn" href="${editLink}" target="_blank" rel="noopener">✎ ערוך</a>` : '—'}</td>

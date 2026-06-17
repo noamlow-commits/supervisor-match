@@ -393,6 +393,12 @@
     </div>
 
     <div class="field" style="margin-top:16px">
+      <label class="field-label">משובצים אצלך כרגע</label>
+      <p class="field-help">מספר התלמידים ששובצו אליך במערכת — מתעדכן אוטומטית. כשמגיעים לקיבולת, את/ה מסומן/ת אוטומטית כ"אין מקום" לתלמידים.</p>
+      <div id="placedInfo" style="font-weight:600">—</div>
+    </div>
+
+    <div class="field" style="margin-top:16px">
       <label class="field-label" for="studentsAccepted">כמה תלמידים אישרת לקבל השנה</label>
       <p class="field-help">עדכן/י את המספר כשאת/ה מאשר/ת תלמיד חדש. רק המזכירה האקדמית רואה את המספרים האלה — לא תלמידים ולא מדריכים אחרים.</p>
       <input class="input" id="studentsAccepted" type="number" min="0" max="20" value="0" style="max-width:120px">
@@ -942,6 +948,19 @@ function restoreUI(){
     });
   });
   document.getElementById('spotToggle').classList.toggle('active', profile.hasSpot);
+  // Live placement count + auto-capacity note
+  const info = document.getElementById('placedInfo');
+  if(info){
+    const pc = Number(profile.placedCount) || 0;
+    const maxS = (profile.maxStudents === '' || profile.maxStudents == null) ? null : Number(profile.maxStudents);
+    info.textContent = maxS !== null ? `${pc} מתוך ${maxS}` : String(pc);
+    if(profile.atCapacity){
+      info.textContent += '  —  הגעת לקיבולת, מסומן/ת אוטומטית כ"אין מקום" לתלמידים';
+      info.style.color = '#c0392b';
+    } else {
+      info.style.color = '';
+    }
+  }
   if(profile.published) showPublished();
 }
 
