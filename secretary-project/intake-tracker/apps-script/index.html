@@ -20,18 +20,26 @@
   .btn:hover{background:var(--teal-d)}
   .bar{display:flex;gap:10px;align-items:center;padding:10px 18px;background:var(--panel);border-bottom:1px solid var(--line);flex-wrap:wrap}
   select,input,textarea{font-family:inherit;font-size:13px;border:1px solid var(--line);border-radius:6px;padding:6px 8px;background:#fff}
-  .board{display:flex;gap:12px;padding:16px;overflow-x:auto;align-items:flex-start}
-  .col{background:var(--panel);border:1px solid var(--line);border-radius:10px;min-width:230px;max-width:230px;flex:0 0 auto}
-  .col h3{margin:0;padding:10px 12px;font-size:13px;border-bottom:1px solid var(--line);position:sticky;top:0;background:var(--panel);border-radius:10px 10px 0 0}
+  /* board: fixed viewport height, each column scrolls internally (no endless page scroll) */
+  .board{display:flex;gap:10px;padding:12px 14px;overflow-x:auto;overflow-y:hidden;align-items:stretch;height:calc(100vh - 112px)}
+  .board::after{content:'';flex:0 0 6px}   /* end spacer so last column isn't flush to the edge */
+  .col{background:var(--panel);border:1px solid var(--line);border-radius:10px;width:230px;min-width:210px;flex:0 0 auto;display:flex;flex-direction:column;max-height:100%}
+  .col h3{margin:0;padding:9px 11px;font-size:12.5px;border-bottom:1px solid var(--line);background:var(--panel);border-radius:10px 10px 0 0;flex:0 0 auto}
   .col h3 .n{color:var(--muted);font-weight:400}
-  .cards{padding:8px;display:flex;flex-direction:column;gap:8px;min-height:30px}
-  .card{border:1px solid var(--line);border-radius:8px;padding:9px;cursor:pointer;background:#fff;transition:.1s}
-  .card:hover{border-color:var(--teal);box-shadow:0 1px 6px #0001}
-  .card.rem{border-right:4px solid var(--warn);background:var(--warn-bg)}
-  .card .nm{font-weight:600}
-  .card .meta{color:var(--muted);font-size:12px;margin-top:3px}
-  .pill{display:inline-block;font-size:11px;padding:1px 7px;border-radius:20px;background:#eef3f6;color:var(--slate);margin-top:5px}
+  .cards{padding:7px;display:flex;flex-direction:column;gap:7px;overflow-y:auto;flex:1 1 auto;min-height:24px}
+  .card{border:1px solid var(--line);border-left:4px solid var(--line);border-radius:7px;padding:7px 9px;cursor:pointer;background:#fff;transition:.1s}
+  .card:hover{box-shadow:0 1px 6px #0002}
+  .card.rem{background:var(--warn-bg)}
+  .card .nm{font-weight:600;font-size:13px;word-break:break-word}
+  .card .meta{color:var(--muted);font-size:11.5px;margin-top:2px;word-break:break-word}
+  .pill{display:inline-block;font-size:10.5px;padding:1px 7px;border-radius:20px;background:#eef3f6;color:var(--slate);margin-top:4px}
   .pill.rem{background:#fde9b8;color:#7a5400}
+  .pill.pay{background:#c6f6d5;color:#22543d}
+  .pill.wait{background:#fed7aa;color:#7b341e}
+  .dot{width:9px;height:9px;border-radius:50%;display:inline-block;vertical-align:middle;margin-left:3px}
+  .legend{display:flex;gap:9px;flex-wrap:wrap;align-items:center}
+  .legend .lg{display:inline-flex;align-items:center;gap:3px;font-size:11px;color:var(--muted)}
+  @media(max-width:640px){ .col{width:80vw;min-width:80vw} .board{height:calc(100vh - 150px)} }
   /* dashboard */
   .dash{padding:18px;display:grid;gap:16px;grid-template-columns:1fr 1fr}
   .panel{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px}
@@ -79,7 +87,9 @@
   <label>תוכנית:</label>
   <select id="progFilter" onchange="render()"><option value="">כל התוכניות</option></select>
   <label><input type="checkbox" id="remOnly" onchange="render()"> רק שצריך תזכורת</label>
-  <input id="search" placeholder="חיפוש שם/טלפון…" oninput="render()" style="margin-right:auto;width:180px">
+  <label><input type="checkbox" id="payOnly" onchange="render()"> ממתין לתשלום</label>
+  <span class="legend" id="legend"></span>
+  <input id="search" placeholder="חיפוש שם/טלפון…" oninput="render()" style="margin-right:auto;width:170px">
 </div>
 
 <div id="view-board"><div class="board" id="board"><div class="spin">טוען…</div></div></div>
@@ -90,8 +100,18 @@
 <div id="toast"></div>
 
 <script>
-var DATA = {rows:[], programs:[], stages:[], schema:[]};
+var DATA = {rows:[], programs:[], stages:[], schema:[], templates:[]};
 var BYKEY = {};
+
+// צבע קבוע לכל תוכנית — לפי סדר התוכנית, פלטה שבה הצבעים הראשונים מקסימלית-שונים
+var PALETTE = ['#2b6cb0','#dd6b20','#2f855a','#c53030','#6b46c1','#0d9488','#b7791f','#be185d'];
+var PROGCOLOR = {};
+function buildColors(progs){ PROGCOLOR = {}; (progs||[]).forEach(function(p,i){ PROGCOLOR[p] = PALETTE[i % PALETTE.length]; }); }
+function progColor(p){ return PROGCOLOR[p] || '#9aa7b1'; }
+function tplFor(prog){ return (DATA.templates||[]).filter(function(t){return t.program===prog;})[0]; }
+// תשלומים: אילו שולמו, והאם ממתין לתשלום (התקבל אך לא שילם דמי הרשמה)
+function paidFees(r){ var f=[]; if(r.payInterview)f.push('ראיון'); if(r.payReg)f.push('הרשמה'); if(r.payDeposit)f.push('מקדמה'); if(r.payTuition)f.push('שכ"ל'); return f; }
+function awaitingPayment(r){ if(r.recordType==='איש-קשר')return false; if(String(r.stage||'').indexOf('סגור')>=0)return false; return r.interview==='התקבל' && !r.payReg; }
 
 function show(v){
   document.getElementById('view-board').style.display = v==='board'?'':'none';
@@ -109,9 +129,19 @@ function load(){
   google.script.run.withSuccessHandler(function(s){
     var d = JSON.parse(s);
     DATA = d; BYKEY={}; d.schema.forEach(function(c){BYKEY[c.key]=c;});
+    // תוכניות-משפך בלבד (בלי רשימות אנשי-קשר) — לסינן, מקרא וצבעים של הלוח
+    var seen={}, funnelProgs=[];
+    DATA.rows.forEach(function(r){
+      if (r.recordType==='איש-קשר' || !r.program) return;
+      if (!seen[r.program]){ seen[r.program]=1; funnelProgs.push(r.program); }
+    });
+    buildColors(funnelProgs);
     var sel = document.getElementById('progFilter');
     sel.innerHTML = '<option value="">כל התוכניות</option>' +
-      d.programs.map(function(p){return '<option>'+esc(p)+'</option>';}).join('');
+      funnelProgs.map(function(p){return '<option>'+esc(p)+'</option>';}).join('');
+    document.getElementById('legend').innerHTML = funnelProgs.map(function(p){
+      return '<span class="lg"><span class="dot" style="background:'+progColor(p)+'"></span>'+esc(p)+'</span>';
+    }).join('');
     render();
   }).withFailureHandler(err).apiBoard();
 }
@@ -119,11 +149,13 @@ function load(){
 function render(){
   var prog = document.getElementById('progFilter').value;
   var remOnly = document.getElementById('remOnly').checked;
+  var payOnly = document.getElementById('payOnly').checked;
   var q = document.getElementById('search').value.trim();
   var rows = DATA.rows.filter(function(r){
     if (r.recordType==='איש-קשר') return false;   // אנשי קשר מוצגים בלשונית נפרדת
     if (prog && r.program!==prog) return false;
     if (remOnly && !r.reminder) return false;
+    if (payOnly && !awaitingPayment(r)) return false;
     if (q && (String(r.name).indexOf(q)<0 && String(r.phone).indexOf(q)<0)) return false;
     return true;
   });
@@ -137,11 +169,15 @@ function render(){
     inStage.forEach(function(r){
       var c = document.createElement('div');
       c.className = 'card' + (r.reminder?' rem':'');
+      c.style.borderLeftColor = progColor(r.program||'');
       c.onclick = function(){ openEdit(r.id); };
+      var fees = paidFees(r);
+      var payPill = fees.length ? '<span class="pill pay">💳 '+esc(fees.join('+'))+'</span>'
+        : (awaitingPayment(r) ? '<span class="pill wait">💳 ממתין לתשלום</span>' : '');
       c.innerHTML = '<div class="nm">'+esc(r.name||'(ללא שם)')+'</div>'+
-        '<div class="meta">'+esc(r.program||'')+(r.phone?' · '+esc(r.phone):'')+'</div>'+
+        '<div class="meta"><span class="dot" style="background:'+progColor(r.program||'')+'"></span>'+esc(r.program||'')+(r.phone?' · '+esc(r.phone):'')+'</div>'+
         '<span class="pill'+(r.reminder?' rem':'')+'">'+esc(r.nextAction||'')+
-        (r.daysSince!==''&&r.daysSince!=null?(' · '+r.daysSince+' ימ\'' ):'')+'</span>';
+        (r.daysSince!==''&&r.daysSince!=null?(' · '+r.daysSince+' ימ\'' ):'')+'</span>'+payPill;
       cards.appendChild(c);
     });
     if (!inStage.length) cards.innerHTML = '<div class="empty" style="padding:14px;font-size:12px">—</div>';
@@ -183,6 +219,14 @@ function buildModal(rec, isNew){
     });
     html += '</div></div>';
   });
+  // תבנית הודעה לפי התוכנית של הפנייה
+  var tpl = tplFor(rec.program);
+  if (tpl && tpl.body){
+    var filled = tpl.body.replace(/\{\{שם\}\}/g, rec.name||'');
+    html += '<div class="grp"><h4>תבנית הודעה — '+esc(rec.program||'')+'</h4>'+
+      '<textarea id="tplBody" rows="6" style="width:100%" readonly>'+esc(filled)+'</textarea>'+
+      '<button type="button" class="btn" style="margin-top:6px" onclick="copyTpl()">📋 העתק טקסט</button></div>';
+  }
   html += '</div><div class="mf"><button class="btn" onclick="save(\''+(isNew?'':rec.id)+'\','+isNew+')">שמירה</button>';
   if (!isNew && rec.email) html += '<button class="btn" style="background:var(--slate);border-color:var(--slate)" onclick="sendMaterial(\''+rec.id+'\')">✉ שלח חומר</button>';
   html += '<button class="tabs" style="background:#eee;color:#333;border:1px solid #ccc;border-radius:7px;padding:7px 13px;cursor:pointer" onclick="closeOv()">ביטול</button></div>';
@@ -255,6 +299,13 @@ function renderContacts(){
         '<td>'+esc(r.city)+'</td><td>'+esc(r.program)+'</td></tr>';
     }).join('')+'</table></div>';
   document.getElementById('contacts').innerHTML = list.length ? html : '<div class="empty">אין אנשי קשר</div>';
+}
+
+function copyTpl(){
+  var ta = document.getElementById('tplBody'); if(!ta) return;
+  ta.removeAttribute('readonly'); ta.focus(); ta.select(); ta.setSelectionRange(0, 99999);
+  try { document.execCommand('copy'); toast('הטקסט הועתק'); } catch(e){ toast('בחר/י והעתק/י ידנית'); }
+  ta.setAttribute('readonly','');
 }
 
 function closeOv(){ document.getElementById('ov').classList.remove('show'); }

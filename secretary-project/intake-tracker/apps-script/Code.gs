@@ -23,7 +23,8 @@ function apiBoard(){
     rows: rows,
     programs: programs,
     stages: FUNNEL.map(function(f){return f.stage;}),
-    schema: SCHEMA
+    schema: SCHEMA,
+    templates: readTemplates_()
   });
 }
 
@@ -95,19 +96,29 @@ function apiSendMaterial(id){
   var o = null; for (var i=0;i<rows.length;i++){ if (rows[i].id===id){ o=rows[i]; break; } }
   if (!o) throw new Error('פנייה לא נמצאה');
   if (!o.email) throw new Error('אין כתובת מייל לפנייה זו');
-  var t = getTemplate_('material_tzimtzum');
+  var t = getTemplateForProgram_(o.program);
+  if (!t || !t.body) throw new Error('אין תבנית הודעה לתוכנית "' + (o.program||'') + '" — הריצו seedTemplatesFromLiveFile או מלאו ידנית בלשונית תבניות');
   var body = t.body.replace(/\{\{שם\}\}/g, o.name || '');
-  MailApp.sendEmail(o.email, t.subject, body);
+  MailApp.sendEmail(o.email, t.subject || ('פנייה — ' + (o.program||'')), body);
   o.materialSent = true; o.materialDate = todayStr_(); o.updatedAt = todayStr_();
   writeRow_(sh, o._row, o);
   return JSON.stringify({ok:true, to:o.email});
 }
 
-function getTemplate_(id){
+// כל התבניות (לפי תוכנית) — נשלח ללקוח עם הלוח.
+function readTemplates_(){
   var sh = getAppDb_().getSheetByName(SHEET_TEMPLATES);
+  if (!sh) return [];
   var data = sh.getDataRange().getValues();
-  for (var i=1;i<data.length;i++){ if (data[i][0]===id) return {subject:data[i][1], body:data[i][2]}; }
-  throw new Error('תבנית לא נמצאה: ' + id);
+  var out = [];
+  for (var i=1;i<data.length;i++){
+    if (data[i][0]) out.push({ program:String(data[i][0]), subject:String(data[i][1]||''), body:String(data[i][2]||'') });
+  }
+  return out;
+}
+
+function getTemplateForProgram_(program){
+  return readTemplates_().filter(function(t){ return t.program === program; })[0] || null;
 }
 
 function uniq_(a){ var s={},o=[]; a.forEach(function(x){ if(!s[x]){s[x]=1;o.push(x);} }); return o; }
