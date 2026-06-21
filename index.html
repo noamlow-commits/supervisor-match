@@ -123,6 +123,7 @@
   }
   .card:hover{transform:translateY(-2px);box-shadow:0 4px 18px rgba(15,23,42,.08)}
   .card.full{opacity:.62}
+  .card.consult{border-color:#c4b5fd;background:linear-gradient(180deg,#faf5ff 0%,var(--surface) 60%)}
   .card-head{display:flex;align-items:flex-start;gap:10px;margin-bottom:10px}
   .card-head .name{flex:1;min-width:0}
   .card .name h2{font-size:17px;margin:0 0 2px;font-weight:600;line-height:1.25}
@@ -133,6 +134,7 @@
   }
   .pill.available{background:var(--available-bg);color:var(--available)}
   .pill.full{background:var(--full-bg);color:var(--full)}
+  .pill.consult{background:#ede9fe;color:#6d28d9}
 
   .card-meta{
     display:flex;flex-wrap:wrap;gap:6px 10px;font-size:12px;color:var(--muted);
@@ -613,19 +615,26 @@ function render(){
 
   grid.innerHTML = '';
   filtered.forEach(s=>{
+    const isConsult = s.cardType === 'consultation';
     const card = document.createElement('div');
-    card.className = 'card' + (s.hasSpot ? '' : ' full');
+    card.className = 'card' + (isConsult ? ' consult' : (s.hasSpot ? '' : ' full'));
+    const pill = isConsult
+      ? `<span class="pill consult">🩺 ייעוץ פסיכיאטרי</span>`
+      : `<span class="pill ${s.hasSpot?'available':'full'}">${s.hasSpot?'יש מקום':'אין מקום'}</span>`;
+    const metaRight = isConsult
+      ? `<span>ייעוץ פסיכיאטרי ממוקד · לא הדרכה</span>`
+      : `<span>${s.yearsSupervising === 1 ? 'שנת הדרכה' : `${s.yearsSupervising} שנות הדרכה`}</span>`;
     card.innerHTML = `
       <div class="card-head">
         <div class="name">
           <h2>${s.fullName}</h2>
           <p class="credential">${s.credential}</p>
         </div>
-        <span class="pill ${s.hasSpot?'available':'full'}">${s.hasSpot?'יש מקום':'אין מקום'}</span>
+        ${pill}
       </div>
       <div class="card-meta">
         <span>${s.format}${s.area ? ' · ' + s.area : ''}</span>
-        <span>${s.yearsSupervising === 1 ? 'שנת הדרכה' : `${s.yearsSupervising} שנות הדרכה`}</span>
+        ${metaRight}
       </div>
       <div class="tags">
         ${s.orientations.slice(0,3).map(o=>`<span class="tag">${o}</span>`).join('')}
@@ -661,8 +670,10 @@ function openModal(s){
   // Coerce to string: Google Sheets may return phone as a Number (stripping the leading 0)
   let phoneStr = s.contact.phone == null ? '' : String(s.contact.phone);
   if(phoneStr && !phoneStr.startsWith('0') && /^\d+$/.test(phoneStr)) phoneStr = '0' + phoneStr;
+  const isConsult = s.cardType === 'consultation';
   const waNum = phoneStr ? phoneStr.replace(/\D/g,'').replace(/^0/,'972') : '';
-  const msg = encodeURIComponent(`שלום ${s.fullName}, אני תלמיד/ה בבית הספר לפסיכותרפיה. ראיתי את הפרופיל שלך במאגר וברצוני לבדוק אפשרות להדרכה.`);
+  const intent = isConsult ? 'וברצוני לבדוק אפשרות לייעוץ פסיכיאטרי ממוקד' : 'וברצוני לבדוק אפשרות להדרכה';
+  const msg = encodeURIComponent(`שלום ${s.fullName}, אני תלמיד/ה בבית הספר לפסיכותרפיה. ראיתי את הפרופיל שלך במאגר ${intent}.`);
   let contactHTML = `<div class="contact-row">`;
   if(phoneStr && s.contact.whatsappEnabled) contactHTML += `<a class="btn-contact btn-wa" href="https://wa.me/${waNum}?text=${msg}" target="_blank"><span class="ic">✦</span> פנייה ב-WhatsApp</a>`;
   if(phoneStr) contactHTML += `<a class="btn-contact btn-tel" href="tel:${phoneStr}"><span class="ic">☎</span> חיוג: ${phoneStr}</a>`;
@@ -673,7 +684,7 @@ function openModal(s){
     <div class="modal-head">
       <h2>${s.fullName}</h2>
       <p class="credential">${s.credential}</p>
-      <div class="meta-line">${s.yearsSupervising === 1 ? 'שנת הדרכה' : `${s.yearsSupervising} שנות הדרכה`} · ${s.format}${s.area?' · '+s.area:''} · <span class="pill ${s.hasSpot?'available':'full'}" style="font-size:11px">${s.hasSpot?'יש מקום':'אין מקום'}</span></div>
+      <div class="meta-line">${isConsult ? 'ייעוץ פסיכיאטרי ממוקד (לא הדרכה)' : (s.yearsSupervising === 1 ? 'שנת הדרכה' : `${s.yearsSupervising} שנות הדרכה`)} · ${s.format}${s.area?' · '+s.area:''} · ${isConsult ? `<span class="pill consult" style="font-size:11px">🩺 ייעוץ פסיכיאטרי</span>` : `<span class="pill ${s.hasSpot?'available':'full'}" style="font-size:11px">${s.hasSpot?'יש מקום':'אין מקום'}</span>`}</div>
     </div>
 
     <div class="field">

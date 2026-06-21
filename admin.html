@@ -552,18 +552,23 @@ function renderTable(supervisors){
 
   // Three groups: published+hasSpot, published+!hasSpot, !published (drafts)
   // Within each group, keep existing sort (already sorted by getAdminStats: by accepted desc, by name)
-  const hasSpot = supervisors.filter(s => s.published && s.hasSpot);
-  const noSpot  = supervisors.filter(s => s.published && !s.hasSpot);
+  const consult = supervisors.filter(s => s.published && s.cardType === 'consultation');
+  const hasSpot = supervisors.filter(s => s.published && s.hasSpot && s.cardType !== 'consultation');
+  const noSpot  = supervisors.filter(s => s.published && !s.hasSpot && s.cardType !== 'consultation');
   const drafts  = supervisors.filter(s => !s.published);
 
   function renderRow(s, rowClass){
+    const isConsult = s.cardType === 'consultation';
     const phoneStr = s.phone ? String(s.phone).replace(/^(\d)/, '0$1').replace(/^00/, '0') : '';
     const editLink = s.token ? `supervisor.html?token=${encodeURIComponent(s.token)}` : '';
+    const spotCell = isConsult
+      ? '<span class="badge" style="background:#ede9fe;color:#6d28d9">🩺 ייעוץ פסיכיאטרי</span>'
+      : `<span class="badge ${s.hasSpot ? 'spot-yes' : 'spot-no'}">${s.hasSpot ? '✓ יש מקום' : (s.atCapacity ? '× מלא (קיבולת)' : '× אין מקום')}</span>`;
     return `<tr class="sup-row ${rowClass}">
       <td class="name-cell" data-label="מדריך">${esc(s.fullName)}<span class="credential">${esc(s.credential)}</span></td>
-      <td data-label="תלמידים"><span class="num-students${s.studentsAccepted === 0 ? ' zero':''}">${s.studentsAccepted}</span></td>
-      <td data-label="קיבולת">${(s.maxStudents === '' || s.maxStudents == null) ? '<span style="color:#aaa">—</span>' : esc(s.maxStudents)}</td>
-      <td data-label="מקום פנוי"><span class="badge ${s.hasSpot ? 'spot-yes' : 'spot-no'}">${s.hasSpot ? '✓ יש מקום' : (s.atCapacity ? '× מלא (קיבולת)' : '× אין מקום')}</span></td>
+      <td data-label="תלמידים"><span class="num-students${s.studentsAccepted === 0 ? ' zero':''}">${isConsult ? '—' : s.studentsAccepted}</span></td>
+      <td data-label="קיבולת">${isConsult ? '<span style="color:#aaa">—</span>' : ((s.maxStudents === '' || s.maxStudents == null) ? '<span style="color:#aaa">—</span>' : esc(s.maxStudents))}</td>
+      <td data-label="מקום פנוי">${spotCell}</td>
       <td data-label="פרסום"><span class="badge ${s.published ? 'published' : 'unpublished'}">${s.published ? '● מפורסם' : '○ טיוטה'}</span></td>
       <td data-label="קשר"><div class="contact-mini">${s.email ? `<a href="mailto:${esc(s.email)}">${esc(s.email)}</a><br>`:''}${phoneStr ? `<a href="tel:${esc(phoneStr)}">${esc(phoneStr)}</a>`:''}</div></td>
       <td data-label="פעולה">${editLink ? `<a class="edit-btn" href="${editLink}" target="_blank" rel="noopener">✎ ערוך</a>` : '—'}</td>
@@ -591,6 +596,11 @@ function renderTable(supervisors){
   if(noSpot.length > 0){
     html += `<tr class="sup-section-header no-spot-header${isFirst ? ' first':''}"><td colspan="7">× מלאים — אין מקום פנוי <span class="count">(${noSpot.length})</span></td></tr>`;
     noSpot.forEach(s => { html += renderRow(s, 'no-spot'); });
+    isFirst = false;
+  }
+  if(consult.length > 0){
+    html += `<tr class="sup-section-header${isFirst ? ' first':''}" style="background:#ede9fe;color:#6d28d9"><td colspan="7">🩺 ייעוץ פסיכיאטרי ממוקד (לא הדרכה) <span class="count">(${consult.length})</span></td></tr>`;
+    consult.forEach(s => { html += renderRow(s, 'consult-row'); });
     isFirst = false;
   }
   if(drafts.length > 0){

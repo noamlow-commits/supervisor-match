@@ -43,8 +43,14 @@ const SUPERVISOR_COLS = [
   'phone', 'whatsappEnabled', 'email',
   'studentsAccepted',
   'mailed',         // TRUE after claim/registration email sent
-  'maxStudents'     // capacity stated by supervisor (form, May 2026). ADMIN-ONLY — never sent to students.
+  'maxStudents',    // capacity stated by supervisor (form, May 2026). ADMIN-ONLY — never sent to students.
+  'cardType'        // '' = supervision (default) | 'consultation' = focused psychiatric consultation, NOT supervision (admin-set). See ensureCardTypeColumn().
 ];
+
+// True when this card offers focused consultation (e.g. psychiatric) rather than supervision (הדרכה).
+function isConsultation(r) {
+  return String(r.cardType || '').trim() === 'consultation';
+}
 
 /* ========== Routing ========== */
 
@@ -253,8 +259,12 @@ function toClientSupervisor(r, placedCount) {
     format: r.format,
     area: r.area,
     availability: parseAvailability(r.availability),
+    // '' = supervision (default) | 'consultation' = focused psychiatric consultation (not הדרכה).
+    cardType: r.cardType || '',
     // Auto: willing AND under capacity. A full supervisor shows as no-spot to students.
-    hasSpot: effectiveHasSpot(r, placedCount || 0),
+    // Consultation cards have no supervision "spot" concept → always false (the UI shows a
+    // consultation badge instead of a spot pill, and they're excluded from the spot filter).
+    hasSpot: isConsultation(r) ? false : effectiveHasSpot(r, placedCount || 0),
     contact: {
       phone: r.phone || '',
       whatsappEnabled: r.whatsappEnabled === true || r.whatsappEnabled === 'TRUE' || r.whatsappEnabled === 'true',
@@ -293,6 +303,7 @@ function getSupervisor(p) {
       published: r.published === true || r.published === 'TRUE' || r.published === 'true',
       studentsAccepted: Number(r.studentsAccepted) || 0,
       maxStudents: r.maxStudents === '' || r.maxStudents == null ? '' : Number(r.maxStudents),
+      cardType: r.cardType || '',                // '' = supervision | 'consultation' = psychiatric consultation
       placedCount: myPlaced,                    // live: students actually assigned to me
       atCapacity: isAtCapacity(r, myPlaced)     // reached my stated capacity
     }
@@ -311,6 +322,7 @@ function saveSupervisor(p) {
   }
 
   ensureMaxStudentsColumn();
+  ensureCardTypeColumn();
   const sheet = getOrCreateSupervisorsSheet();
   const allValues = sheet.getDataRange().getValues();
   const headers = allValues[0];
@@ -345,6 +357,12 @@ function saveSupervisor(p) {
     maxStudents: (data.maxStudents === '' || data.maxStudents == null) ? '' : Math.max(0, Number(data.maxStudents) || 0)
   };
 
+  // cardType is admin-set and the supervisor editor doesn't send it. Only update it when the
+  // client explicitly provides it — otherwise an ordinary profile save would erase the flag.
+  if (data.cardType !== undefined) {
+    updates.cardType = (String(data.cardType).trim() === 'consultation') ? 'consultation' : '';
+  }
+
   for (const [k, v] of Object.entries(updates)) {
     const col = headers.indexOf(k);
     if (col < 0) continue;
@@ -366,6 +384,7 @@ function saveSupervisor(p) {
 function getAdminStats(p) {
   requireAdminPin(p);
   ensureMaxStudentsColumn();
+  ensureCardTypeColumn();
   const rows = readSupervisorRows();
   const students = readStudentRows();
 
@@ -389,13 +408,15 @@ function getAdminStats(p) {
 
   const supervisors = rows.map(r => {
     const published = r.published === true || r.published === 'TRUE' || r.published === 'true';
+    const consultation = isConsultation(r);
     const willing = r.hasSpot === true || r.hasSpot === 'TRUE' || r.hasSpot === 'true';
     const selfReported = Number(r.studentsAccepted) || 0;
     const placedFromList = placedPerSupervisor[r.token] || 0;
     // If we have student records, prefer them; otherwise fall back to self-report
     const accepted = students.length > 0 ? placedFromList : selfReported;
     const atCapacity = isAtCapacity(r, placedFromList);
-    const available = willing && !atCapacity;   // effective availability
+    // Consultation cards aren't supervision spots — never counted as available capacity.
+    const available = !consultation && willing && !atCapacity;   // effective availability
     if (published) publishedCount++;
     if (available) withSpotCount++;
     totalAccepted += accepted;
@@ -404,6 +425,7 @@ function getAdminStats(p) {
       fullName: r.fullName || '(ללא שם)',
       credential: r.credential || '',
       published,
+      cardType: r.cardType || '',  // '' = supervision | 'consultation' = psychiatric consultation
       hasSpot: available,        // effective (drives grouping + badge)
       willing,                   // the supervisor's manual toggle
       atCapacity,                // reached maxStudents
@@ -1124,6 +1146,22 @@ function ensureMaxStudentsColumn() {
   const newCol = lastCol + 1;
   sheet.getRange(1, newCol).setValue('maxStudents');
   Logger.log('Added "maxStudents" column to Supervisors (admin-only). Existing rows left blank.');
+}
+
+/**
+ * Adds the "cardType" column to the Supervisors tab if missing.
+ * '' = supervision (default); 'consultation' = focused psychiatric consultation (not הדרכה).
+ * Admin-set. Existing rows default to '' (supervision). Safe to run repeatedly.
+ */
+function ensureCardTypeColumn() {
+  const sheet = getOrCreateSupervisorsSheet();
+  const lastCol = sheet.getLastColumn();
+  const headers = sheet.getRange(1, 1, 1, lastCol).getValues()[0];
+  if (headers.indexOf('cardType') >= 0) return;
+
+  const newCol = lastCol + 1;
+  sheet.getRange(1, newCol).setValue('cardType');
+  Logger.log('Added "cardType" column to Supervisors. Existing rows default to supervision (blank).');
 }
 
 function sendClaimEmail(toEmail, name, baseUrl) {
