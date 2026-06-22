@@ -1,11 +1,20 @@
 /**
- * importer.gs — סנכרון חד-כיווני: קובץ חי → App DB.
- * קריאה בלבד מהקובץ החי. כל לשונית = תוכנית. גמיש לשינויי מבנה (זיהוי כותרות לפי נרדפות).
+ * importer.gs — ייבוא מהקובץ הישן ל-App DB.
  *
- * upsert לפי מפתח זהות (קוד לקוח / טלפון / שם). שדות-הרחבה של האפליקציה (aug) נשמרים.
+ * ⚠️ עמדת cutover (2026-06-21): ה-App DB הוא **מקור-האמת (master)**. הקובץ הישן = ארכיב.
+ *   • runImport()      — ברירת המחדל (גם כפתור באפליקציה): **insert-only** — מוסיף רק רשומות
+ *                        חדשות (מפתח שלא קיים), ולעולם לא דורס עריכות שטל עשתה באפליקציה.
+ *   • runFullResync()  — חד-פעמי לפני ה-cutover בלבד (מהעורך): upsert מלא שמושך מחדש את כל
+ *                        הקובץ הישן ודורס שדות קיימים. אחריו עוברים לעבוד רק דרך האפליקציה.
+ *
+ * קריאה בלבד מהקובץ הישן. כל לשונית = תוכנית. שדות-הרחבה (aug) תמיד נשמרים.
  */
-function runImport(){
+function runImport(){ return doImport_(false); }     // insert-only — בטוח ל-master
+function runFullResync(){ return doImport_(true); }  // overwrite — סנכרון סופי חד-פעמי בלבד
+
+function doImport_(overwriteExisting){
   var live = SpreadsheetApp.openById(LIVE_FILE_ID);   // קריאה בלבד
+  ensureColumns_();                                    // עמודות-סכמה חדשות (צ'ק-ליסט מסמכים וכו')
   var sh = inquiriesSheet_();
 
   // אינדקס קיים לפי מפתח
@@ -23,13 +32,14 @@ function runImport(){
     incoming = incoming.concat(recs);
   });
 
-  var added = 0, updated = 0, skipped = 0;
+  var added = 0, updated = 0, skipped = 0, kept = 0;
   incoming.forEach(function(rec){
     if (!rec.name && !rec.crmCode && !rec.phone){ skipped++; return; }
     var key = recordKey_(rec);
     var cur = byKey[key];
     if (cur){
-      // עדכון: מעדכנים שדות לא-aug ולא-computed; שומרים aug + מזהה + תאריך פנייה מקורי
+      if (!overwriteExisting){ kept++; return; }   // insert-only: לא נוגעים ברשומה קיימת (master)
+      // resync מלא: מעדכנים שדות לא-aug ולא-computed; שומרים aug + מזהה + תאריך פנייה מקורי
       SCHEMA.forEach(function(c){
         if (c.aug || c.computed || c.key==='id' || c.key==='inquiryDate') return;
         if (rec[c.key] !== undefined && rec[c.key] !== '') cur[c.key] = rec[c.key];
@@ -56,9 +66,30 @@ function runImport(){
     }
   });
 
-  var msg = 'ייבוא הושלם — נוספו ' + added + ', עודכנו ' + updated + ', דולגו ' + skipped + '.';
+  var mode = overwriteExisting ? 'resync מלא' : 'משיכת חדשים בלבד';
+  var msg = 'ייבוא (' + mode + ') הושלם — נוספו ' + added +
+    (overwriteExisting ? (', עודכנו ' + updated) : (', נשמרו ללא שינוי ' + kept)) +
+    ', דולגו ' + skipped + '.';
   Logger.log(msg);
-  return {added:added, updated:updated, skipped:skipped, message:msg};
+  return {added:added, updated:updated, kept:kept, skipped:skipped, message:msg};
+}
+
+/**
+ * חד-פעמי: מנרמל את שמות-התוכנית של הרשומות הקיימות ב-App DB לתוויות הנקיות
+ * (הדיאלוגי/תעודה/אח"ד) — בלי למשוך מהקובץ הישן. בטוח, לא נוגע בשדות אחרים.
+ */
+function normalizeExistingPrograms(){
+  var sh = inquiriesSheet_();
+  var rows = readInquiries_();
+  var col = sh.getRange(1,1,1,sh.getLastColumn()).getValues()[0].indexOf('תוכנית') + 1;
+  if (col < 1) { Logger.log('עמודת "תוכנית" לא נמצאה'); return 0; }
+  var n = 0;
+  rows.forEach(function(o){
+    var canon = canonicalProgram_(o.program);
+    if (canon && canon !== o.program){ sh.getRange(o._row, col).setValue(canon); n++; }
+  });
+  Logger.log('נורמלו ' + n + ' שמות-תוכנית.');
+  return n;
 }
 
 /** פירוש לשונית בודדת → מערך רשומות מנורמלות. */
@@ -77,11 +108,12 @@ function parseTab_(tab, program){
   if (headerRow < 0 || !bestMap || bestMap.name === undefined) return [];
 
   var cycle = guessCycle_(program);
+  var canon = canonicalProgram_(program);   // שם-לשונית ארוך → תווית נקייה (הדיאלוגי/תעודה/אח"ד)
   var PAYSUM = {payReg:'payRegSum', payDeposit:'payDepositSum', payTuition:'payTuitionSum'};
   var out = [];
   for (var i=headerRow+1; i<values.length; i++){
     var row = values[i];
-    var rec = {program: program, cycle: cycle};
+    var rec = {program: canon, cycle: cycle};
     Object.keys(bestMap).forEach(function(key){
       if (key === 'stageRaw') return; // עמודת "תהליך" טקסטואלית — לא ממופה ישירות
       rec[key] = coerce_(key, row[bestMap[key]]);

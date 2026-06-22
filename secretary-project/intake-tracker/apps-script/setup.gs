@@ -9,12 +9,14 @@
  */
 function setup(){
   var ss;
-  if (APP_DB_ID){
-    ss = SpreadsheetApp.openById(APP_DB_ID);
+  var existingId = getAppDbId_();
+  if (existingId){
+    ss = SpreadsheetApp.openById(existingId);
   } else {
     ss = SpreadsheetApp.create('מעקב פניות — App DB (מכון רוטנברג)');
-    Logger.log('✅ נוצר App DB חדש. הדביקו ב-config.gs:\nvar APP_DB_ID = \'' + ss.getId() + '\';');
+    Logger.log('✅ נוצר App DB חדש. ה-id נשמר ב-Script Properties (וגם, לגיבוי, הדביקו ב-config.gs):\nvar APP_DB_ID = \'' + ss.getId() + '\';');
   }
+  setAppDbId_(ss.getId());   // מקור-האמת למזהה = Script Properties (עמיד בהדבקת config)
   buildInquiries_(ss);
   buildLookups_(ss);
   buildTemplates_(ss);
@@ -47,7 +49,7 @@ function buildInquiries_(ss){
     var ruleClosed = SpreadsheetApp.newConditionalFormatRule()
       .whenTextContains('✗').setBackground('#e0e0e0').setRanges([range]).build();
     var ruleDone = SpreadsheetApp.newConditionalFormatRule()
-      .whenTextContains('8 · נרשם').setBackground('#c8e6c9').setRanges([range]).build();
+      .whenTextContains('נרשם').setBackground('#c8e6c9').setRanges([range]).build();
     sh.setConditionalFormatRules([ruleClosed, ruleDone]);
   }
   return sh;
@@ -59,7 +61,7 @@ function buildLookups_(ss){
   sh.getRange(1,1,1,3).setValues([['סטטוסים','ערוצי פנייה','שלבי משפך']]).setFontWeight('bold');
   var statuses = SCHEMA.filter(function(c){return c.key==='status';})[0].options;
   var channels = SCHEMA.filter(function(c){return c.key==='channel';})[0].options;
-  var stages   = FUNNEL.map(function(f){return f.stage;});
+  var stages   = DIALOGI_FUNNEL.map(function(f){return f.stage;});   // המשפך המלא ביותר — לעיון בלבד בגיליון
   var max = Math.max(statuses.length, channels.length, stages.length);
   for (var i=0;i<max;i++){
     sh.getRange(i+2,1).setValue(statuses[i]||'');

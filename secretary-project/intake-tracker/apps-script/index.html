@@ -36,6 +36,19 @@
   .pill.rem{background:#fde9b8;color:#7a5400}
   .pill.pay{background:#c6f6d5;color:#22543d}
   .pill.wait{background:#fed7aa;color:#7b341e}
+  .pill.gate{background:#fde2e2;color:#9b2c2c}
+  /* cross-cutting table */
+  .tbl-wrap{padding:12px 14px;height:calc(100vh - 112px);overflow:auto}
+  .tbl-bar{display:flex;gap:10px;align-items:center;margin-bottom:10px;flex-wrap:wrap}
+  table.cross{width:100%;border-collapse:collapse;font-size:12.5px;background:#fff;border:1px solid var(--line);border-radius:8px;overflow:hidden}
+  table.cross th{position:sticky;top:0;background:var(--slate);color:#fff;z-index:1;white-space:nowrap}
+  table.cross td,table.cross th{border-bottom:1px solid var(--line);padding:5px 7px;text-align:center}
+  table.cross td.nm{text-align:right;font-weight:600;white-space:nowrap}
+  table.cross tr:hover td{background:#f0f6f7}
+  .cell-ok{background:#e7f6ec;color:#1e7a44}
+  .cell-pend{background:#fff3df;color:#9a6b00}
+  .cell-no{color:#c0392b}
+  .gate-row td.nm::after{content:' ⚠';color:#c0392b}
   .dot{width:9px;height:9px;border-radius:50%;display:inline-block;vertical-align:middle;margin-left:3px}
   .legend{display:flex;gap:9px;flex-wrap:wrap;align-items:center}
   .legend .lg{display:inline-flex;align-items:center;gap:3px;font-size:11px;color:var(--muted)}
@@ -75,11 +88,12 @@
   <h1>מעקב פניות · מכון רוטנברג</h1>
   <div class="tabs">
     <button id="tab-board" class="active" onclick="show('board')">לוח</button>
+    <button id="tab-table" onclick="show('table')">טבלה רוחבית</button>
     <button id="tab-dash" onclick="show('dash')">דשבורד</button>
     <button id="tab-contacts" onclick="show('contacts')">אנשי קשר</button>
   </div>
   <span class="sp"></span>
-  <button class="btn" onclick="doImport()">⟳ ייבוא מהקובץ החי</button>
+  <button class="btn" onclick="doImport()" title="מושך רק פניות חדשות מהקובץ הישן — לא דורס מה שעדכנת כאן">⟳ משיכת חדשים מהארכיב</button>
   <button class="btn" onclick="openNew()">+ פנייה חדשה</button>
 </header>
 
@@ -93,6 +107,7 @@
 </div>
 
 <div id="view-board"><div class="board" id="board"><div class="spin">טוען…</div></div></div>
+<div id="view-table" style="display:none"><div id="tableView"></div></div>
 <div id="view-dash" style="display:none"><div class="dash" id="dash"></div></div>
 <div id="view-contacts" style="display:none"><div class="dash" id="contacts" style="grid-template-columns:1fr"></div></div>
 
@@ -103,24 +118,40 @@
 var DATA = {rows:[], programs:[], stages:[], schema:[], templates:[]};
 var BYKEY = {};
 
-// צבע קבוע לכל תוכנית — לפי סדר התוכנית, פלטה שבה הצבעים הראשונים מקסימלית-שונים
+// נרמול שם-תוכנית בצד הלקוח (תואם canonicalProgram_ בשרת) — כדי לאחד תווית נקייה
+// עם שם-לשונית ארוך שעוד לא יובא מחדש.
+function canonProg(s){
+  var t = String(s||'');
+  if (/הדיאלוגי|דיאלוג/.test(t))             return 'הדיאלוגי';
+  if (/תעודה|הצמצום|תהוד/.test(t))           return 'תעודה';
+  if (/אח["׳']?ד|אחד|תוכנית אח/.test(t))      return 'אח"ד';
+  return s;
+}
+// צבע קבוע לכל תוכנית — מהשרת (PROGRAM_COLORS), עם נפילה-לאחור לפלטה.
 var PALETTE = ['#2b6cb0','#dd6b20','#2f855a','#c53030','#6b46c1','#0d9488','#b7791f','#be185d'];
 var PROGCOLOR = {};
-function buildColors(progs){ PROGCOLOR = {}; (progs||[]).forEach(function(p,i){ PROGCOLOR[p] = PALETTE[i % PALETTE.length]; }); }
-function progColor(p){ return PROGCOLOR[p] || '#9aa7b1'; }
-function tplFor(prog){ return (DATA.templates||[]).filter(function(t){return t.program===prog;})[0]; }
+function buildColors(progs){
+  PROGCOLOR = {};
+  var server = DATA.programColors || {};
+  (progs||[]).forEach(function(p,i){ PROGCOLOR[canonProg(p)] = server[canonProg(p)] || PALETTE[i % PALETTE.length]; });
+}
+function progColor(p){ return PROGCOLOR[canonProg(p)] || (DATA.programColors||{})[canonProg(p)] || '#9aa7b1'; }
+function tplFor(prog){ var cp=canonProg(prog); return (DATA.templates||[]).filter(function(t){return canonProg(t.program)===cp;})[0]; }
 // תשלומים: אילו שולמו, והאם ממתין לתשלום (התקבל אך לא שילם דמי הרשמה)
 function paidFees(r){ var f=[]; if(r.payInterview)f.push('ראיון'); if(r.payReg)f.push('הרשמה'); if(r.payDeposit)f.push('מקדמה'); if(r.payTuition)f.push('שכ"ל'); return f; }
 function awaitingPayment(r){ if(r.recordType==='איש-קשר')return false; if(String(r.stage||'').indexOf('סגור')>=0)return false; return r.interview==='התקבל' && !r.payReg; }
 
 function show(v){
   document.getElementById('view-board').style.display = v==='board'?'':'none';
+  document.getElementById('view-table').style.display = v==='table'?'':'none';
   document.getElementById('view-dash').style.display  = v==='dash'?'':'none';
   document.getElementById('view-contacts').style.display = v==='contacts'?'':'none';
   document.getElementById('bar').style.display = v==='board'?'':'none';
   document.getElementById('tab-board').classList.toggle('active', v==='board');
+  document.getElementById('tab-table').classList.toggle('active', v==='table');
   document.getElementById('tab-dash').classList.toggle('active', v==='dash');
   document.getElementById('tab-contacts').classList.toggle('active', v==='contacts');
+  if (v==='table') renderTable();
   if (v==='dash') loadDash();
   if (v==='contacts') renderContacts();
 }
@@ -129,21 +160,37 @@ function load(){
   google.script.run.withSuccessHandler(function(s){
     var d = JSON.parse(s);
     DATA = d; BYKEY={}; d.schema.forEach(function(c){BYKEY[c.key]=c;});
-    // תוכניות-משפך בלבד (בלי רשימות אנשי-קשר) — לסינן, מקרא וצבעים של הלוח
-    var seen={}, funnelProgs=[];
-    DATA.rows.forEach(function(r){
-      if (r.recordType==='איש-קשר' || !r.program) return;
-      if (!seen[r.program]){ seen[r.program]=1; funnelProgs.push(r.program); }
-    });
-    buildColors(funnelProgs);
+    // התוכניות הפעילות השנה (3) — מהשרת. נופלים-לאחור לתוכניות שבנתונים אם חסר.
+    var progs = (DATA.activePrograms && DATA.activePrograms.length) ? DATA.activePrograms.slice() : [];
+    if (!progs.length){
+      var seen={}; DATA.rows.forEach(function(r){ var c=canonProg(r.program); if(r.recordType!=='איש-קשר'&&c&&!seen[c]){seen[c]=1;progs.push(c);} });
+    }
+    buildColors(progs);
     var sel = document.getElementById('progFilter');
+    var prev = sel.value;
     sel.innerHTML = '<option value="">כל התוכניות</option>' +
-      funnelProgs.map(function(p){return '<option>'+esc(p)+'</option>';}).join('');
-    document.getElementById('legend').innerHTML = funnelProgs.map(function(p){
+      progs.map(function(p){return '<option'+(p===prev?' selected':'')+'>'+esc(p)+'</option>';}).join('');
+    document.getElementById('legend').innerHTML = progs.map(function(p){
       return '<span class="lg"><span class="dot" style="background:'+progColor(p)+'"></span>'+esc(p)+'</span>';
     }).join('');
     render();
   }).withFailureHandler(err).apiBoard();
+}
+
+// רשימת השלבים (עמודות) ללוח לפי התוכנית שנבחרה. "כל התוכניות" → השלבים שמופיעים בפועל.
+function columnsFor(prog, rows){
+  var canon = canonProg(prog);
+  var base = (canon && DATA.funnels && DATA.funnels[canon]) ? DATA.funnels[canon].slice() : null;
+  var hasClosed = rows.some(function(r){ return String(r.stage||'').indexOf('✗')>=0; });
+  if (base){
+    if (hasClosed) base.push('✗ סגור');
+    return base;
+  }
+  // ללא תוכנית מסוננת: כל השלבים שקיימים ברשומות, ממוינים (קידומת מספרית → סדר טבעי).
+  var seen={}, out=[];
+  rows.forEach(function(r){ if(r.stage && !seen[r.stage]){ seen[r.stage]=1; out.push(r.stage); } });
+  out.sort();
+  return out;
 }
 
 function render(){
@@ -153,7 +200,7 @@ function render(){
   var q = document.getElementById('search').value.trim();
   var rows = DATA.rows.filter(function(r){
     if (r.recordType==='איש-קשר') return false;   // אנשי קשר מוצגים בלשונית נפרדת
-    if (prog && r.program!==prog) return false;
+    if (prog && canonProg(r.program)!==prog) return false;
     if (remOnly && !r.reminder) return false;
     if (payOnly && !awaitingPayment(r)) return false;
     if (q && (String(r.name).indexOf(q)<0 && String(r.phone).indexOf(q)<0)) return false;
@@ -161,7 +208,7 @@ function render(){
   });
   var board = document.getElementById('board');
   board.innerHTML = '';
-  DATA.stages.forEach(function(stage){
+  columnsFor(prog, rows).forEach(function(stage){
     var inStage = rows.filter(function(r){return r.stage===stage;});
     var col = document.createElement('div'); col.className='col';
     col.innerHTML = '<h3>'+esc(stage)+' <span class="n">('+inStage.length+')</span></h3>';
@@ -174,10 +221,11 @@ function render(){
       var fees = paidFees(r);
       var payPill = fees.length ? '<span class="pill pay">💳 '+esc(fees.join('+'))+'</span>'
         : (awaitingPayment(r) ? '<span class="pill wait">💳 ממתין לתשלום</span>' : '');
+      var gate = r.gateWarn ? '<span class="pill gate">⚠ דמי הרשמה</span>' : '';
       c.innerHTML = '<div class="nm">'+esc(r.name||'(ללא שם)')+'</div>'+
-        '<div class="meta"><span class="dot" style="background:'+progColor(r.program||'')+'"></span>'+esc(r.program||'')+(r.phone?' · '+esc(r.phone):'')+'</div>'+
+        '<div class="meta"><span class="dot" style="background:'+progColor(r.program||'')+'"></span>'+esc(canonProg(r.program)||'')+(r.phone?' · '+esc(r.phone):'')+'</div>'+
         '<span class="pill'+(r.reminder?' rem':'')+'">'+esc(r.nextAction||'')+
-        (r.daysSince!==''&&r.daysSince!=null?(' · '+r.daysSince+' ימ\'' ):'')+'</span>'+payPill;
+        (r.daysSince!==''&&r.daysSince!=null?(' · '+r.daysSince+' ימ\'' ):'')+'</span>'+payPill+gate;
       cards.appendChild(c);
     });
     if (!inStage.length) cards.innerHTML = '<div class="empty" style="padding:14px;font-size:12px">—</div>';
@@ -199,22 +247,42 @@ function buildModal(rec, isNew){
   var html = '<div class="mh"><h2>'+(isNew?'פנייה חדשה':esc(rec.name||'פנייה'))+'</h2>'+
     (rec.stage?'<span class="pill" style="background:#ffffff22;color:#fff">'+esc(rec.stage)+'</span>':'')+
     '<span class="x" onclick="closeOv()">×</span></div><div class="mb">';
+  // אזהרת שער (רכה) — בהדיאלוגי, ריאיון מחייב דמי הרשמה תחילה. לא חוסם.
+  if (rec.gateWarn){
+    html += '<div style="background:#fde2e2;color:#9b2c2c;border:1px solid #f5b5b5;border-radius:8px;padding:9px 11px;margin-bottom:12px;font-size:12.5px">⚠ '+esc(rec.gateWarn)+'</div>';
+  }
   Object.keys(groups).forEach(function(g){
     html += '<div class="grp"><h4>'+esc(g)+'</h4><div class="fields">';
     groups[g].forEach(function(c){
       var v = rec[c.key]; v = (v===undefined||v===null)?'':v;
       var full = (c.type==='string'&&['recommend','missingForms','noInterest','crmNote','payNote'].indexOf(c.key)>=0)?' full':'';
       var dis = c.computed?' disabled':'';
+      var lbl = esc(c.label||c.header);
+      if (c.key==='program'){
+        // בחירה מתוך שלוש התוכניות הפעילות (במקום הקלדת השם הארוך) — כך הצבע/המקרא תמיד תואמים.
+        var cur = canonProg(v);
+        var progs = (DATA.activePrograms||[]).slice();
+        if (cur && progs.indexOf(cur)<0) progs.unshift(cur);   // לשמר תוכנית שאינה ברשימה הפעילה
+        html += '<div class="f full"><label>'+lbl+'</label>'+
+          '<select id="fld_program" onchange="onProgChange(this)">'+
+            '<option value=""'+(cur===''?' selected':'')+'>— בחר תוכנית —</option>'+
+            progs.map(function(p){return '<option'+(p===cur?' selected':'')+'>'+esc(p)+'</option>';}).join('')+
+            '<option value="__new__">➕ תוכנית חדשה…</option>'+
+          '</select>'+
+          '<input type="text" id="fld_program_new" placeholder="שם תוכנית חדשה" style="display:none;margin-top:6px">'+
+        '</div>';
+        return;
+      }
       if (c.type==='bool'){
-        html += '<div class="f chk"><input type="checkbox" id="fld_'+c.key+'"'+(v===true||v==='TRUE'?' checked':'')+dis+'><label for="fld_'+c.key+'">'+esc(c.header)+'</label></div>';
+        html += '<div class="f chk"><input type="checkbox" id="fld_'+c.key+'"'+(v===true||v==='TRUE'?' checked':'')+dis+'><label for="fld_'+c.key+'">'+lbl+'</label></div>';
       } else if (c.options){
-        html += '<div class="f'+full+'"><label>'+esc(c.header)+'</label><select id="fld_'+c.key+'"'+dis+'>'+
+        html += '<div class="f'+full+'"><label>'+lbl+'</label><select id="fld_'+c.key+'"'+dis+'>'+
           c.options.map(function(o){return '<option'+(o===v?' selected':'')+'>'+esc(o)+'</option>';}).join('')+'</select></div>';
       } else if (full){
-        html += '<div class="f full"><label>'+esc(c.header)+'</label><textarea id="fld_'+c.key+'" rows="2"'+dis+'>'+esc(v)+'</textarea></div>';
+        html += '<div class="f full"><label>'+lbl+'</label><textarea id="fld_'+c.key+'" rows="2"'+dis+'>'+esc(v)+'</textarea></div>';
       } else {
         var t = c.type==='date'?'date':(c.type==='number'?'number':'text');
-        html += '<div class="f"><label>'+esc(c.header)+'</label><input type="'+t+'" id="fld_'+c.key+'" value="'+esc(v)+'"'+dis+'></div>';
+        html += '<div class="f"><label>'+lbl+'</label><input type="'+t+'" id="fld_'+c.key+'" value="'+esc(v)+'"'+dis+'></div>';
       }
     });
     html += '</div></div>';
@@ -223,21 +291,44 @@ function buildModal(rec, isNew){
   var tpl = tplFor(rec.program);
   if (tpl && tpl.body){
     var filled = tpl.body.replace(/\{\{שם\}\}/g, rec.name||'');
-    html += '<div class="grp"><h4>תבנית הודעה — '+esc(rec.program||'')+'</h4>'+
+    html += '<div class="grp"><h4>תבנית הודעה — '+esc(canonProg(rec.program)||'')+'</h4>'+
       '<textarea id="tplBody" rows="6" style="width:100%" readonly>'+esc(filled)+'</textarea>'+
       '<button type="button" class="btn" style="margin-top:6px" onclick="copyTpl()">📋 העתק טקסט</button></div>';
   }
   html += '</div><div class="mf"><button class="btn" onclick="save(\''+(isNew?'':rec.id)+'\','+isNew+')">שמירה</button>';
   if (!isNew && rec.email) html += '<button class="btn" style="background:var(--slate);border-color:var(--slate)" onclick="sendMaterial(\''+rec.id+'\')">✉ שלח חומר</button>';
-  html += '<button class="tabs" style="background:#eee;color:#333;border:1px solid #ccc;border-radius:7px;padding:7px 13px;cursor:pointer" onclick="closeOv()">ביטול</button></div>';
+  html += '<button class="tabs" style="background:#eee;color:#333;border:1px solid #ccc;border-radius:7px;padding:7px 13px;cursor:pointer" onclick="closeOv()">ביטול</button>';
+  if (!isNew) html += '<button class="tabs" style="margin-right:auto;background:#fff0f0;color:#c0392b;border:1px solid #f0b8b8;border-radius:7px;padding:7px 13px;cursor:pointer" onclick="delInquiry(\''+rec.id+'\',\''+esc(rec.name||'')+'\')">🗑 מחק פנייה</button>';
+  html += '</div>';
   document.getElementById('modal').innerHTML = html;
   document.getElementById('ov').classList.add('show');
+}
+
+function delInquiry(id, name){
+  if (!confirm('למחוק את הפנייה של "'+(name||'')+'"? פעולה זו אינה ניתנת לביטול.')) return;
+  toast('מוחק…');
+  google.script.run.withSuccessHandler(function(){ closeOv(); toast('נמחק'); load(); }).withFailureHandler(err).apiDelete(id);
+}
+
+// הצגת תיבת "תוכנית חדשה" כשנבחר ➕
+function onProgChange(sel){
+  var ne = document.getElementById('fld_program_new');
+  if (!ne) return;
+  var isNew = sel.value==='__new__';
+  ne.style.display = isNew?'':'none';
+  if (isNew) ne.focus();
 }
 
 function collect(isNew){
   var patch = {};
   DATA.schema.forEach(function(c){
     if (c.group==='מטא'||c.computed||c.key==='id') return;
+    if (c.key==='program'){
+      var se = document.getElementById('fld_program'); if (!se) return;
+      var pv = se.value;
+      if (pv==='__new__'){ var ne = document.getElementById('fld_program_new'); pv = ne?ne.value.trim():''; }
+      patch.program = pv; return;
+    }
     var el = document.getElementById('fld_'+c.key); if (!el) return;
     patch[c.key] = (c.type==='bool') ? el.checked : el.value;
   });
@@ -274,9 +365,10 @@ function renderDash(d){
   var html = '';
   Object.keys(d.byProgram).forEach(function(p){
     var counts = d.byProgram[p];
-    var max = Math.max.apply(null, d.stages.map(function(s){return counts[s]||0;}).concat([1]));
-    html += '<div class="panel"><h2>'+esc(p)+'</h2><table class="funnel">';
-    d.stages.forEach(function(s){
+    var stages = (DATA.funnels && DATA.funnels[canonProg(p)]) ? DATA.funnels[canonProg(p)] : d.stages;
+    var max = Math.max.apply(null, stages.map(function(s){return counts[s]||0;}).concat([1]));
+    html += '<div class="panel"><h2>'+esc(canonProg(p))+'</h2><table class="funnel">';
+    stages.forEach(function(s){
       var n = counts[s]||0;
       html += '<tr><td>'+esc(s)+'</td><td style="width:55%"><span class="barfill" style="width:'+(n/max*100)+'%"></span> '+n+'</td></tr>';
     });
@@ -299,6 +391,64 @@ function renderContacts(){
         '<td>'+esc(r.city)+'</td><td>'+esc(r.program)+'</td></tr>';
     }).join('')+'</table></div>';
   document.getElementById('contacts').innerHTML = list.length ? html : '<div class="empty">אין אנשי קשר</div>';
+}
+
+/* ===== מבט רוחבי — טבלת-על שמחליפה את האקסל ===== */
+function docCount(r){
+  var req=['docCert','docExperience','docCV','docStory','docRec1','docRec2'];
+  var n=req.filter(function(k){return r[k]===true||r[k]==='TRUE';}).length;
+  return {n:n,total:req.length,pass:(r.docPassport===true||r.docPassport==='TRUE')};
+}
+function _td(cls,txt){ return '<td'+(cls?' class="'+cls+'"':'')+'>'+esc(txt)+'</td>'; }
+function _boolTd(b,yes,no){ return b?_td('cell-ok',yes||'✓'):_td('cell-pend',no||'—'); }
+
+function renderTable(){
+  var host=document.getElementById('tableView');
+  var all=DATA.rows.filter(function(r){return r.recordType!=='איש-קשר';});
+  var tProg=window._tblProg||'', tNeed=!!window._tblNeed;
+  var progs=(DATA.activePrograms||[]);
+  var rows=all.filter(function(r){
+    if(tProg && canonProg(r.program)!==tProg) return false;
+    if(tNeed && !(r.reminder||r.gateWarn||awaitingPayment(r))) return false;
+    return true;
+  });
+  rows.sort(function(a,b){ return String(canonProg(a.program)).localeCompare(String(canonProg(b.program))) || String(a.stage).localeCompare(String(b.stage)) || String(a.name).localeCompare(String(b.name)); });
+
+  var bar='<div class="tbl-bar"><label>תוכנית:</label><select onchange="window._tblProg=this.value;renderTable()">'+
+    '<option value=""'+(tProg===''?' selected':'')+'>כל התוכניות</option>'+
+    progs.map(function(p){return '<option'+(p===tProg?' selected':'')+'>'+esc(p)+'</option>';}).join('')+'</select>'+
+    '<label style="margin-right:8px"><input type="checkbox"'+(tNeed?' checked':'')+' onchange="window._tblNeed=this.checked;renderTable()"> צריך טיפול בלבד</label>'+
+    '<span style="color:var(--muted);margin-right:auto">'+rows.length+' פניות</span></div>';
+
+  if(!rows.length){ host.innerHTML='<div class="tbl-wrap">'+bar+'<div class="empty">אין פניות להצגה</div></div>'; return; }
+
+  var head='<tr><th>שם</th><th>תוכנית</th><th>שלב</th><th>פעולה הבאה</th><th>קשר</th><th>מסמכים</th>'+
+    '<th>דמי הרשמה</th><th>ריאיון</th><th>התקבל</th><th>נרשם</th><th>ימים</th><th>תזכורת</th></tr>';
+
+  var body=rows.map(function(r){
+    var dc=docCount(r);
+    var docCls=dc.n>=dc.total?'cell-ok':(dc.n>0?'cell-pend':'');
+    var docTxt=dc.n+'/'+dc.total+(dc.pass?' +פ':'');
+    var iv=String(r.interview||'');
+    var ivCls=iv==='התקבל'?'cell-ok':(iv==='נדחה'?'cell-no':(iv&&iv!=='לא נקבע'?'cell-pend':''));
+    var dot='<span class="dot" style="background:'+progColor(r.program)+'"></span>';
+    return '<tr class="'+(r.gateWarn?'gate-row':'')+'" onclick="openEdit(\''+r.id+'\')" style="cursor:pointer">'+
+      _td('nm',(r.name||'(ללא שם)'))+
+      '<td>'+dot+esc(canonProg(r.program))+'</td>'+
+      _td('',r.stage||'')+
+      _td('',r.nextAction||'')+
+      _boolTd(r.materialSent||r.spoke,'✓','—')+
+      _td(docCls,docTxt)+
+      _boolTd(r.payReg,'✓ שולם', r.gateWarn?'⚠ חסר':'—')+
+      _td(ivCls,iv||'—')+
+      _boolTd(r.interview==='התקבל','✓','—')+
+      _boolTd(r.registered,'✓','—')+
+      _td(r.daysSince>=14?'cell-pend':'',(r.daysSince===''||r.daysSince==null)?'—':r.daysSince)+
+      _td('',r.reminder?('🔔 '+(r.daysSince||'')):'')+
+    '</tr>';
+  }).join('');
+
+  host.innerHTML='<div class="tbl-wrap">'+bar+'<table class="cross"><thead>'+head+'</thead><tbody>'+body+'</tbody></table></div>';
 }
 
 function copyTpl(){

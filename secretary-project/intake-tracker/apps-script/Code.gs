@@ -12,6 +12,7 @@ function doGet(){
 
 /** נתוני הלוח: כל הפניות (מחושבות) + רשימות עזר. מוחזר כ-JSON-string (בטוח לסריאליזציה). */
 function apiBoard(){
+  ensureColumns_();   // עמודות-סכמה חדשות (צ'ק-ליסט מסמכים) — מיגרציה בטוחה
   var rows = readInquiries_().map(function(o){
     computeRow_(o);
     o.reminder = needsReminder_(o);
@@ -19,13 +20,33 @@ function apiBoard(){
     return sanitizeOut_(o);
   });
   var programs = uniq_(rows.map(function(r){return r.program;}).filter(String));
+  // משפך (רשימת שלבים) לכל תוכנית פעילה — הלוח בונה עמודות לפי התוכנית שנבחרה.
+  var funnels = {
+    'הדיאלוגי': DIALOGI_FUNNEL.map(function(f){return f.stage;}),
+    'תעודה':    TEUDA_FUNNEL.map(function(f){return f.stage;}),
+    'אח"ד':     AHAD_FUNNEL.map(function(f){return f.stage;})
+  };
   return JSON.stringify({
     rows: rows,
     programs: programs,
-    stages: FUNNEL.map(function(f){return f.stage;}),
+    activePrograms: ACTIVE_PROGRAMS,
+    programColors: PROGRAM_COLORS,
+    regAnchors: PROGRAM_REG_ANCHOR,
+    funnels: funnels,
+    stages: DIALOGI_FUNNEL.map(function(f){return f.stage;}),   // ברירת-מחדל (תאימות)
     schema: SCHEMA,
     templates: readTemplates_()
   });
+}
+
+/** מחיקת פנייה לפי id. */
+function apiDelete(id){
+  var sh = inquiriesSheet_();
+  var rows = readInquiries_();
+  for (var i=0;i<rows.length;i++){
+    if (rows[i].id === id){ sh.deleteRow(rows[i]._row); return JSON.stringify({ok:true}); }
+  }
+  throw new Error('פנייה לא נמצאה: ' + id);
 }
 
 /** עדכון פנייה. patch = {id, field:value, ...}. מחזיר את הרשומה המעודכנת. */
@@ -51,6 +72,9 @@ function apiUpdate(patch){
 
 /** יצירת פנייה חדשה ידנית מהאפליקציה. */
 function apiCreate(rec){
+  // ולידציה בסיסית — האפליקציה היא מקור-האמת, לא יוצרים רשומות ריקות.
+  if (!String(rec.name||'').trim() && !String(rec.phone||'').trim())
+    throw new Error('נדרש לפחות שם או טלפון');
   var sh = inquiriesSheet_();
   rec.id = 'A' + Utilities.getUuid().slice(0,8);
   rec.source = 'app';
@@ -84,7 +108,7 @@ function apiDashboard(){
       outstanding.push({id:o.id, name:o.name, program:p, owe:'דמי הרשמה'});
   });
   return JSON.stringify({byProgram:byProgram, reminders:reminders, outstanding:outstanding,
-          stages:FUNNEL.map(function(f){return f.stage;}), total:rows.length});
+          stages:DIALOGI_FUNNEL.map(function(f){return f.stage;}), total:rows.length});
 }
 
 /** הרצת ייבוא מתוך האפליקציה. */
@@ -112,7 +136,8 @@ function readTemplates_(){
   var data = sh.getDataRange().getValues();
   var out = [];
   for (var i=1;i<data.length;i++){
-    if (data[i][0]) out.push({ program:String(data[i][0]), subject:String(data[i][1]||''), body:String(data[i][2]||'') });
+    // מנרמלים את שם התוכנית של התבנית כדי שתתאים לתוכנית המנורמלת של הפנייה.
+    if (data[i][0]) out.push({ program:canonicalProgram_(String(data[i][0])), subject:String(data[i][1]||''), body:String(data[i][2]||'') });
   }
   return out;
 }

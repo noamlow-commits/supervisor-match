@@ -52,8 +52,16 @@ var SCHEMA = [
   {key:'hasMA',         header:'תואר שני',        type:'bool',   group:'סף קבלה'},
   {key:'has2yrs',       header:'ניסיון שנתיים',   type:'bool',   group:'סף קבלה'},
   {key:'pastStudent',   header:'עבר במכון',       type:'bool',   group:'סף קבלה'},
+  // מסמכים (צ'ק-ליסט — ✓ לכל אחד, לא מעכב)
+  {key:'docCert',       header:'תעודות',          type:'bool',   group:'מסמכים'},
+  {key:'docExperience', header:'טופס ניסיון',     type:'bool',   group:'מסמכים'},
+  {key:'docCV',         header:'קורות חיים',      type:'bool',   group:'מסמכים'},
+  {key:'docStory',      header:'סיפור אישי',      type:'bool',   group:'מסמכים'},
+  {key:'docPassport',   header:'פספורט (לא חובה)',type:'bool',   group:'מסמכים'},
+  {key:'docRec1',       header:'המלצה 1',         type:'bool',   group:'מסמכים'},
+  {key:'docRec2',       header:'המלצה 2',         type:'bool',   group:'מסמכים'},
   // תהליך
-  {key:'materialSent',  header:'נשלח חומר',       type:'bool',   group:'תהליך'},
+  {key:'materialSent',  header:'נשלח חומר',       type:'bool',   group:'תהליך', label:'נוצר קשר ונשלח חומר'},
   {key:'materialDate',  header:'תאריך חומר',      type:'date',   group:'תהליך'},
   {key:'spoke',         header:'שוחחנו',          type:'bool',   group:'תהליך'},
   {key:'regForm',       header:'טופס הרשמה',      type:'bool',   group:'תהליך'},
@@ -128,19 +136,72 @@ var SOURCE_SYNONYMS = {
   cycle:       ['מחזור','מחזור כח הצמצום']
 };
 
-// ── שלבי משפך ופעולות ─────────────────────────────────────────
-var FUNNEL = [
-  {stage:'0 · פנייה חדשה',     next:'לשלוח חומר'},
-  {stage:'1 · נשלח חומר',      next:'ליצור קשר / לשוחח'},
-  {stage:'2 · שוחחנו',         next:'לאסוף מסמכים והמלצות'},
-  {stage:'3 · מסמכים מלאים',   next:'לקבוע ראיון'},
-  {stage:'4 · ראיון נקבע',     next:'לקיים ראיון'},
-  {stage:'5 · התקבל',          next:'לגבות דמי הרשמה (300)'},
-  {stage:'6 · שילם הרשמה',     next:'לגבות מקדמה (1200)'},
-  {stage:'7 · שילם מקדמה',     next:'לגבות שכ"ל'},
-  {stage:'8 · נרשם',           next:'לוודא רישום ב-CRM'},
-  {stage:'✗ סגור',             next:'—'}
+// ── תוכניות פעילות השנה ────────────────────────────────────────
+// טל עובדת השנה עם שלוש תוכניות בלבד. שם הלשונית הארוך בקובץ החי מנורמל לאחת מהן.
+var ACTIVE_PROGRAMS = ['הדיאלוגי', 'תעודה', 'אח"ד'];
+
+// צבע קבוע לכל תוכנית (גם בשרת — למבט הרוחבי). הלקוח יכול לדרוס.
+var PROGRAM_COLORS = { 'הדיאלוגי':'#2b6cb0', 'תעודה':'#2f855a', 'אח"ד':'#dd6b20' };
+
+// עוגן ההרשמה — איזה תשלום פירושו "נרשם" בכל תוכנית:
+//   הדיאלוגי = מקדמה · תעודה = דמי הרשמה · אח"ד = תשלום מלא (כל תשלום)
+var PROGRAM_REG_ANCHOR = { 'הדיאלוגי':'payDeposit', 'תעודה':'payReg', 'אח"ד':'payFull' };
+
+// נרמול שם תוכנית: שם לשונית ארוך / תווית → אחת משלוש התוויות הנקיות.
+// מחזיר את הקלט כפי שהוא אם לא זוהה (למשל רשימת אנשי-קשר).
+function canonicalProgram_(s){
+  var t = String(s||'');
+  if (/הדיאלוגי|דיאלוג/.test(t))            return 'הדיאלוגי';
+  if (/תעודה|הצמצום|תהוד/.test(t))          return 'תעודה';
+  if (/אח["׳']?ד|\bאחד\b|תוכנית אח/.test(t)) return 'אח"ד';
+  return s;
+}
+
+// ── שלבי משפך ופעולות — לכל תוכנית משפך משלה ──────────────────
+// כל פריט: {stage, next, reached(o)} — reached קובע אם אבן-הדרך הושגה.
+// השלב = אבן-הדרך הגבוהה ביותר שהושגה (computeRow_ ב-lib.gs).
+var DIALOGI_FUNNEL = [
+  {stage:'0 · פנייה חדשה',     next:'ליצור קשר ולשלוח חומר',            reached:function(o){ return true; }},
+  {stage:'1 · נשלח חומר',      next:'לשוחח ולברר עניין',                reached:function(o){ return o.materialSent; }},
+  {stage:'2 · שוחחנו',         next:'לאסוף מסמכים + דמי הרשמה (300)',   reached:function(o){ return o.spoke; }},
+  {stage:'3 · מסמכים + הרשמה', next:'לקבוע ריאיון (דורש דמי הרשמה)',     reached:function(o){ return o.payReg || o.docCert || o.docCV || o.docRec1 || o.certDocs || o.recommend; }},
+  {stage:'4 · ריאיון',         next:'לקיים ריאיון + לקבל חוות דעת',     reached:function(o){ return o.interviewDate || o.interview==='נקבע' || o.interview==='בוצע'; }},
+  {stage:'5 · התקבל (ועדה)',   next:'לשלוח מכתב קבלה ולגבות מקדמה',      reached:function(o){ return o.interview==='התקבל'; }},
+  {stage:'6 · נרשם (מקדמה)',   next:'לוודא שהכסף הגיע',                  reached:function(o){ return o.payDeposit; }}
 ];
+var TEUDA_FUNNEL = [
+  {stage:'0 · פנייה חדשה',       next:'ליצור קשר / שיחה ראשונית',        reached:function(o){ return true; }},
+  {stage:'1 · שיחה ראשונית',     next:'להפנות לריאיון עם הרב רונן',       reached:function(o){ return o.materialSent || o.spoke; }},
+  {stage:'2 · ריאיון (הרב רונן)',next:'לקבל חוות דעת מהרב רונן',          reached:function(o){ return o.interviewDate || o.interview==='נקבע' || o.interview==='בוצע'; }},
+  {stage:'3 · התקבל',            next:'לגבות דמי הרשמה',                  reached:function(o){ return o.interview==='התקבל'; }},
+  {stage:'4 · דמי הרשמה (נרשם)', next:'לגבות יתרת שכר לימוד',             reached:function(o){ return o.payReg; }},
+  {stage:'5 · שכר לימוד מלא',    next:'לוודא שהכסף הגיע',                 reached:function(o){ return o.payTuition; }}
+];
+var AHAD_FUNNEL = [
+  {stage:'0 · פנייה חדשה',       next:'לגבות תשלום מלא',                  reached:function(o){ return true; }},
+  {stage:'1 · נרשם (תשלום מלא)', next:'לוודא שהכסף הגיע',                 reached:function(o){ return o.payTuition || o.payDeposit || o.payReg; }}
+];
+// משפך ברירת-מחדל לתוכנית לא-מזוהה (תאימות לאחור).
+var GENERIC_FUNNEL = [
+  {stage:'0 · פנייה חדשה',   next:'לשלוח חומר',         reached:function(o){ return true; }},
+  {stage:'1 · נשלח חומר',    next:'ליצור קשר / לשוחח',  reached:function(o){ return o.materialSent; }},
+  {stage:'2 · שוחחנו',       next:'לאסוף מסמכים',       reached:function(o){ return o.spoke; }},
+  {stage:'3 · מסמכים מלאים', next:'לקבוע ראיון',        reached:function(o){ return o.certDocs && o.regForm && o.recommend; }},
+  {stage:'4 · ראיון נקבע',   next:'לקיים ראיון',        reached:function(o){ return o.interview==='נקבע' || o.interview==='בוצע' || o.interviewDate; }},
+  {stage:'5 · התקבל',        next:'לגבות דמי הרשמה',    reached:function(o){ return o.interview==='התקבל'; }},
+  {stage:'6 · שילם הרשמה',   next:'לגבות מקדמה',        reached:function(o){ return o.payReg; }},
+  {stage:'7 · שילם מקדמה',   next:'לגבות שכ"ל',         reached:function(o){ return o.payDeposit; }},
+  {stage:'8 · נרשם',         next:'לוודא שהכסף הגיע',   reached:function(o){ return o.payTuition; }}
+];
+
+// מחזיר את מערך המשפך המתאים לתוכנית.
+function funnelFor_(program){
+  var p = canonicalProgram_(program);
+  if (p === 'הדיאלוגי') return DIALOGI_FUNNEL;
+  if (p === 'תעודה')    return TEUDA_FUNNEL;
+  if (p === 'אח"ד')     return AHAD_FUNNEL;
+  return GENERIC_FUNNEL;
+}
 
 function schemaByKey(){ var m={}; SCHEMA.forEach(function(c){m[c.key]=c;}); return m; }
 function headers(){ return SCHEMA.map(function(c){return c.header;}); }
