@@ -60,17 +60,24 @@ function ensureColumns_(){
   return missing.length;
 }
 
-// כתיבת אובייקט פנייה לשורה (מחושב מחדש לפני כתיבה).
-function writeRow_(sh, rowNum, obj){
-  if (!rowNum){ throw new Error('writeRow_ ללא מספר שורה עבור ' + (obj && obj.name)); }
-  computeRow_(obj);
+// בונה שורה להוספה לפי **סדר העמודות בפועל בגיליון** (לא לפי סדר ה-SCHEMA).
+// קריטי: ensureColumns_ מוסיף עמודות חדשות בסוף, כך שסדר הגיליון עשוי להיות שונה
+// מסדר ה-SCHEMA — בנייה לפי headers() תגרום לאי-התאמת עמודות בשורות חדשות.
+function lineForSheet_(sh, obj){
   var hdr = sh.getRange(1,1,1,sh.getLastColumn()).getValues()[0];
-  var line = hdr.map(function(h){
+  return hdr.map(function(h){
     var c = SCHEMA.filter(function(x){return x.header===h;})[0];
     if (!c) return '';
     var v = obj[c.key];
     return (v === undefined || v === null) ? '' : v;
   });
+}
+
+// כתיבת אובייקט פנייה לשורה (מחושב מחדש לפני כתיבה).
+function writeRow_(sh, rowNum, obj){
+  if (!rowNum){ throw new Error('writeRow_ ללא מספר שורה עבור ' + (obj && obj.name)); }
+  computeRow_(obj);
+  var line = lineForSheet_(sh, obj);
   sh.getRange(rowNum,1,1,line.length).setValues([line]);
 }
 
@@ -130,12 +137,18 @@ function regAnchorPaid_(o){
   return !!o[a];
 }
 
-// אזהרה רכה (לא חוסמת): בהדיאלוגי, ריאיון מחייב תשלום דמי הרשמה (300) תחילה.
+// אזהרה רכה (לא חוסמת): בהדיאלוגי, לפני ריאיון נדרשים גם דמי הרשמה (300) וגם כל המסמכים.
+// המסמכים הם צוואר-הבקבוק — האזהרה מפרטת מה חסר.
 function gateWarn_(o){
   if (canonicalProgram_(o.program) !== 'הדיאלוגי') return '';
-  var atInterview = o.interviewDate || ['נקבע','בוצע','התקבל'].indexOf(o.interview) >= 0;
-  if (atInterview && !o.payReg) return 'טרם שולמו דמי הרשמה (300) — נדרש לפני ריאיון';
-  return '';
+  var atInterview = o.interviewer || o.interviewDate || ['נקבע','בוצע','התקבל'].indexOf(o.interview) >= 0;
+  if (!atInterview) return '';
+  var miss = [];
+  if (!o.payReg) miss.push('דמי הרשמה (300)');
+  var docs = ['docCert','docCV','docStory','docExperience','docRec1','docRec2'];  // פספורט אינו חובה
+  var n = docs.filter(function(k){ return !o[k]; }).length;
+  if (n) miss.push(n + ' מסמכים חסרים');
+  return miss.length ? ('טרם הושלם לפני ריאיון: ' + miss.join(' · ')) : '';
 }
 
 function isClosed_(o){

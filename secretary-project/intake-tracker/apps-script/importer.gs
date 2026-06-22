@@ -54,12 +54,7 @@ function doImport_(overwriteExisting){
       rec.inquiryDate = rec.inquiryDate || rec.updatedAt || todayStr_();
       rec.updatedAt = rec.updatedAt || todayStr_();
       computeRow_(rec);
-      var line = headers().map(function(h){
-        var c = SCHEMA.filter(function(x){return x.header===h;})[0];
-        var v = c ? rec[c.key] : '';
-        return (v===undefined||v===null)?'':v;
-      });
-      sh.appendRow(line);
+      sh.appendRow(lineForSheet_(sh, rec));   // לפי סדר העמודות בגיליון (מונע אי-התאמה)
       rec._row = sh.getLastRow();   // שמירת מספר השורה — כדי שכפילות מאוחרת תוכל לעדכן אותה
       byKey[key] = rec;
       added++;

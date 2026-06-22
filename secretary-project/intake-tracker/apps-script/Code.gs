@@ -75,19 +75,19 @@ function apiCreate(rec){
   // ולידציה בסיסית — האפליקציה היא מקור-האמת, לא יוצרים רשומות ריקות.
   if (!String(rec.name||'').trim() && !String(rec.phone||'').trim())
     throw new Error('נדרש לפחות שם או טלפון');
+  ensureColumns_();
   var sh = inquiriesSheet_();
+  // דה-דופ: אם כבר קיימת פנייה עם אותו מפתח-זהות (תוכנית+קוד/טלפון/שם) — לא ליצור כפיל.
+  var key = recordKey_(rec);
+  if (readInquiries_().some(function(o){ return recordKey_(o) === key; }))
+    throw new Error('כבר קיימת פנייה דומה (אותו אדם באותה תוכנית). פתח/י ועדכן/י אותה במקום ליצור חדשה.');
   rec.id = 'A' + Utilities.getUuid().slice(0,8);
   rec.source = 'app';
   rec.inquiryDate = todayStr_();
   rec.updatedAt = todayStr_();
   if (!rec.status) rec.status = 'פנייה חדשה';
   computeRow_(rec);
-  var line = headers().map(function(h){
-    var c = SCHEMA.filter(function(x){return x.header===h;})[0];
-    var v = c ? rec[c.key] : '';
-    return (v===undefined||v===null)?'':v;
-  });
-  sh.appendRow(line);
+  sh.appendRow(lineForSheet_(sh, rec));   // לפי סדר העמודות בגיליון (מונע אי-התאמה)
   return JSON.stringify(sanitizeOut_(rec));
 }
 

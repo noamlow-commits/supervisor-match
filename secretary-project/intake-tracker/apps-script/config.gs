@@ -69,6 +69,7 @@ var SCHEMA = [
   {key:'recommend',     header:'המלצות',          type:'string', group:'תהליך'},
   {key:'missingForms',  header:'טפסים חסרים',     type:'string', group:'תהליך'},
   {key:'interview',     header:'מצב ראיון',       type:'string', group:'תהליך', options:['לא נקבע','נקבע','בוצע','התקבל','נדחה']},
+  {key:'interviewer',   header:'מראיין',          type:'string', group:'תהליך'},
   {key:'interviewDate', header:'תאריך ראיון',     type:'date',   group:'תהליך'},
   // תשלומים
   {key:'payInterview',  header:'דמי ראיון שולם',  type:'bool',   group:'תשלומים'},
@@ -160,22 +161,23 @@ function canonicalProgram_(s){
 // ── שלבי משפך ופעולות — לכל תוכנית משפך משלה ──────────────────
 // כל פריט: {stage, next, reached(o)} — reached קובע אם אבן-הדרך הושגה.
 // השלב = אבן-הדרך הגבוהה ביותר שהושגה (computeRow_ ב-lib.gs).
+// הדיאלוגי (מלא). שלב המסמכים = צוואר-הבקבוק (נתקעים בו עד שכל המסמכים מגיעים).
+function anyDoc_(o){ return o.payReg || o.docCert || o.docCV || o.docStory || o.docExperience || o.docRec1 || o.docRec2 || o.certDocs || o.recommend; }
 var DIALOGI_FUNNEL = [
-  {stage:'0 · פנייה חדשה',     next:'ליצור קשר ולשלוח חומר',            reached:function(o){ return true; }},
-  {stage:'1 · נשלח חומר',      next:'לשוחח ולברר עניין',                reached:function(o){ return o.materialSent; }},
-  {stage:'2 · שוחחנו',         next:'לאסוף מסמכים + דמי הרשמה (300)',   reached:function(o){ return o.spoke; }},
-  {stage:'3 · מסמכים + הרשמה', next:'לקבוע ריאיון (דורש דמי הרשמה)',     reached:function(o){ return o.payReg || o.docCert || o.docCV || o.docRec1 || o.certDocs || o.recommend; }},
-  {stage:'4 · ריאיון',         next:'לקיים ריאיון + לקבל חוות דעת',     reached:function(o){ return o.interviewDate || o.interview==='נקבע' || o.interview==='בוצע'; }},
-  {stage:'5 · התקבל (ועדה)',   next:'לשלוח מכתב קבלה ולגבות מקדמה',      reached:function(o){ return o.interview==='התקבל'; }},
-  {stage:'6 · נרשם (מקדמה)',   next:'לוודא שהכסף הגיע',                  reached:function(o){ return o.payDeposit; }}
+  {stage:'0 · פנייה ראשונית',       next:'התאמה לתוכנית + שיחת פרטים',        reached:function(o){ return true; }},
+  {stage:'1 · שיחה והתאמה',         next:'לפתוח תהליך הרשמה (מסמכים + 300)',  reached:function(o){ return o.materialSent || o.spoke; }},
+  {stage:'2 · מסמכים + דמי הרשמה',  next:'לאסוף את כל המסמכים + דמי הרשמה (300)', reached:function(o){ return anyDoc_(o); }},
+  {stage:'3 · התאמת מראיין',        next:'לקבוע ריאיון',                       reached:function(o){ return o.interviewer || o.interview==='נקבע'; }},
+  {stage:'4 · ריאיון',              next:'דמי ריאיון + שליחת חוו"ד לועדה',     reached:function(o){ return o.interviewDate || o.interview==='בוצע' || o.payInterview; }},
+  {stage:'5 · ועדה / מכתב קבלה',    next:'לשלוח מכתב קבלה ולגבות מקדמה (1200)', reached:function(o){ return o.interview==='התקבל'; }},
+  {stage:'6 · נרשם (מקדמה 1200)',   next:'לוודא שהכסף הגיע (הבטחת מקום)',      reached:function(o){ return o.payDeposit; }}
 ];
+// כוח הצמצום (תעודה) — מהיר: אחרי הפנייה הראשונית, ריאיון עם הרב רונן + דמי הרשמה 300 = נרשם.
 var TEUDA_FUNNEL = [
-  {stage:'0 · פנייה חדשה',       next:'ליצור קשר / שיחה ראשונית',        reached:function(o){ return true; }},
-  {stage:'1 · שיחה ראשונית',     next:'להפנות לריאיון עם הרב רונן',       reached:function(o){ return o.materialSent || o.spoke; }},
-  {stage:'2 · ריאיון (הרב רונן)',next:'לקבל חוות דעת מהרב רונן',          reached:function(o){ return o.interviewDate || o.interview==='נקבע' || o.interview==='בוצע'; }},
-  {stage:'3 · התקבל',            next:'לגבות דמי הרשמה',                  reached:function(o){ return o.interview==='התקבל'; }},
-  {stage:'4 · דמי הרשמה (נרשם)', next:'לגבות יתרת שכר לימוד',             reached:function(o){ return o.payReg; }},
-  {stage:'5 · שכר לימוד מלא',    next:'לוודא שהכסף הגיע',                 reached:function(o){ return o.payTuition; }}
+  {stage:'0 · פנייה ראשונית',        next:'התאמה לתוכנית + שיחה',             reached:function(o){ return true; }},
+  {stage:'1 · שיחה והתאמה',          next:'להפנות לריאיון עם הרב רונן',       reached:function(o){ return o.materialSent || o.spoke; }},
+  {stage:'2 · ריאיון (הרב רונן)',    next:'לגבות דמי הרשמה (300)',            reached:function(o){ return o.interviewDate || o.interview==='נקבע' || o.interview==='בוצע' || o.interview==='התקבל'; }},
+  {stage:'3 · נרשם (דמי הרשמה 300)', next:'לוודא שהכסף הגיע',                 reached:function(o){ return o.payReg; }}
 ];
 var AHAD_FUNNEL = [
   {stage:'0 · פנייה חדשה',       next:'לגבות תשלום מלא',                  reached:function(o){ return true; }},
