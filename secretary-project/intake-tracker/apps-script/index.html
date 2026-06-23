@@ -29,6 +29,9 @@
   .cards{padding:7px;display:flex;flex-direction:column;gap:7px;overflow-y:auto;flex:1 1 auto;min-height:24px}
   .card{border:1px solid var(--line);border-left:4px solid var(--line);border-radius:7px;padding:7px 9px;cursor:pointer;background:#fff;transition:.1s}
   .card:hover{box-shadow:0 1px 6px #0002}
+  .card[draggable=true]{cursor:grab}
+  .card.dragging{opacity:.45;cursor:grabbing}
+  .col.drop-hover{outline:2px dashed var(--teal);outline-offset:-2px;background:#f0faf9}
   .card.rem{background:var(--warn-bg)}
   .card .nm{font-weight:600;font-size:13px;word-break:break-word}
   .card .meta{color:var(--muted);font-size:11.5px;margin-top:2px;word-break:break-word}
@@ -181,17 +184,32 @@ function load(){
 function columnsFor(prog, rows){
   var canon = canonProg(prog);
   var base = (canon && DATA.funnels && DATA.funnels[canon]) ? DATA.funnels[canon].slice() : null;
-  var hasClosed = rows.some(function(r){ return String(r.stage||'').indexOf('✗')>=0; });
+  var hasClosed = rows.some(function(r){ return String(effStage(r)||'').indexOf('✗')>=0; });
   if (base){
     if (hasClosed) base.push('✗ סגור');
     return base;
   }
   // ללא תוכנית מסוננת: כל השלבים שקיימים ברשומות, ממוינים (קידומת מספרית → סדר טבעי).
   var seen={}, out=[];
-  rows.forEach(function(r){ if(r.stage && !seen[r.stage]){ seen[r.stage]=1; out.push(r.stage); } });
+  rows.forEach(function(r){ var s=effStage(r); if(s && !seen[s]){ seen[s]=1; out.push(s); } });
   out.sort();
   return out;
 }
+
+// שלב אפקטיבי בלוח = מיקום ידני (גרירה) אם תקף למשפך התוכנית, אחרת השלב המחושב.
+function effStage(r){
+  var f = DATA.funnels && DATA.funnels[canonProg(r.program)];
+  if (r.boardStage && f && f.indexOf(r.boardStage) >= 0) return r.boardStage;
+  return r.stage;
+}
+function truthy_(v){
+  if (v===true || v==='TRUE' || v==='true') return true;
+  if (v===false || v==='' || v==null || v==='FALSE' || v==='false') return false;
+  if (typeof v==='number') return v>0;
+  if (typeof v==='string') return v.trim().length>0;
+  return !!v;
+}
+var DRAG_ID = null;
 
 function render(){
   var prog = document.getElementById('progFilter').value;
@@ -209,14 +227,21 @@ function render(){
   var board = document.getElementById('board');
   board.innerHTML = '';
   columnsFor(prog, rows).forEach(function(stage){
-    var inStage = rows.filter(function(r){return r.stage===stage;});
+    var inStage = rows.filter(function(r){ return effStage(r)===stage; });
     var col = document.createElement('div'); col.className='col';
     col.innerHTML = '<h3>'+esc(stage)+' <span class="n">('+inStage.length+')</span></h3>';
     var cards = document.createElement('div'); cards.className='cards';
+    // עמודה = יעד-גרירה
+    cards.addEventListener('dragover', function(ev){ ev.preventDefault(); col.classList.add('drop-hover'); });
+    cards.addEventListener('dragleave', function(){ col.classList.remove('drop-hover'); });
+    cards.addEventListener('drop', function(ev){ ev.preventDefault(); col.classList.remove('drop-hover'); onDrop(stage); });
     inStage.forEach(function(r){
       var c = document.createElement('div');
       c.className = 'card' + (r.reminder?' rem':'');
       c.style.borderLeftColor = progColor(r.program||'');
+      c.draggable = true;
+      c.addEventListener('dragstart', function(ev){ DRAG_ID = r.id; c.classList.add('dragging'); if(ev.dataTransfer) ev.dataTransfer.effectAllowed='move'; });
+      c.addEventListener('dragend', function(){ c.classList.remove('dragging'); });
       c.onclick = function(){ openEdit(r.id); };
       var fees = paidFees(r);
       var payPill = fees.length ? '<span class="pill pay">💳 '+esc(fees.join('+'))+'</span>'
@@ -228,9 +253,26 @@ function render(){
         (r.daysSince!==''&&r.daysSince!=null?(' · '+r.daysSince+' ימ\'' ):'')+'</span>'+payPill+gate;
       cards.appendChild(c);
     });
-    if (!inStage.length) cards.innerHTML = '<div class="empty" style="padding:14px;font-size:12px">—</div>';
+    if (!inStage.length){ var e=document.createElement('div'); e.className='empty'; e.style.cssText='padding:14px;font-size:12px'; e.textContent='—'; cards.appendChild(e); }
     col.appendChild(cards); board.appendChild(col);
   });
+}
+
+// גרירה הסתיימה על עמודה → מעבר לשלב, עם תזכורת אם חסרות אבני-דרך.
+function onDrop(stage){
+  var id = DRAG_ID; DRAG_ID = null;
+  if (!id) return;
+  var r = rowById(id);
+  if (!r || effStage(r)===stage) return;
+  var prog = canonProg(r.program);
+  var reqs = (DATA.stageRequires && DATA.stageRequires[prog] && DATA.stageRequires[prog][stage]) || [];
+  var missing = reqs.filter(function(qq){ return !truthy_(r[qq.key]); });
+  if (missing.length){
+    var msg = 'לפני "'+stage+'" כדאי לוודא:\n• ' + missing.map(function(m){return m.label;}).join('\n• ') + '\n\nלהעביר בכל זאת?';
+    if (!confirm(msg)){ render(); return; }
+  }
+  toast('מעביר…');
+  google.script.run.withSuccessHandler(function(){ toast('הועבר ל'+stage); load(); }).withFailureHandler(err).apiUpdate({id:r.id, boardStage:stage});
 }
 
 function rowById(id){ return DATA.rows.filter(function(r){return r.id===id;})[0]; }
@@ -255,7 +297,7 @@ function buildModal(rec, isNew){
     html += '<div class="grp"><h4>'+esc(g)+'</h4><div class="fields">';
     groups[g].forEach(function(c){
       var v = rec[c.key]; v = (v===undefined||v===null)?'':v;
-      var full = (c.type==='string'&&['recommend','missingForms','noInterest','crmNote','payNote'].indexOf(c.key)>=0)?' full':'';
+      var full = (c.type==='string'&&['recommend','missingForms','noInterest','crmNote','payNote','delibEarly','delibLate'].indexOf(c.key)>=0)?' full':'';
       var dis = c.computed?' disabled':'';
       var lbl = esc(c.label||c.header);
       if (c.key==='program'){
@@ -435,7 +477,7 @@ function renderTable(){
     return '<tr class="'+(r.gateWarn?'gate-row':'')+'" onclick="openEdit(\''+r.id+'\')" style="cursor:pointer">'+
       _td('nm',(r.name||'(ללא שם)'))+
       '<td>'+dot+esc(canonProg(r.program))+'</td>'+
-      _td('',r.stage||'')+
+      _td('',effStage(r)||'')+
       _td('',r.nextAction||'')+
       _boolTd(r.materialSent||r.spoke,'✓','—')+
       _td(docCls,docTxt)+

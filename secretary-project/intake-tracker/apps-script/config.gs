@@ -60,6 +60,9 @@ var SCHEMA = [
   {key:'docPassport',   header:'פספורט (לא חובה)',type:'bool',   group:'מסמכים'},
   {key:'docRec1',       header:'המלצה 1',         type:'bool',   group:'מסמכים'},
   {key:'docRec2',       header:'המלצה 2',         type:'bool',   group:'מסמכים'},
+  // התלבטות — שתי נקודות התלבטות (טקסט חופשי). aug=true: לא נדרס בייבוא.
+  {key:'delibEarly',    header:'התלבטות (שיחה←הרשמה)',  type:'string', group:'התלבטות', aug:true},
+  {key:'delibLate',     header:'התלבטות (קבלה←מקדמה)',  type:'string', group:'התלבטות', aug:true},
   // תהליך
   {key:'materialSent',  header:'נשלח חומר',       type:'bool',   group:'תהליך', label:'נוצר קשר ונשלח חומר'},
   {key:'materialDate',  header:'תאריך חומר',      type:'date',   group:'תהליך'},
@@ -99,8 +102,23 @@ var SCHEMA = [
   // מטא / הרחבות אפליקציה (לא נדרסות בייבוא)
   {key:'source',        header:'מקור',            type:'string', group:'מטא',   aug:true},
   {key:'snoozeUntil',   header:'דחיית תזכורת עד', type:'date',   group:'מטא',   aug:true},
-  {key:'actionNote',    header:'הערת פעולה',      type:'string', group:'מטא',   aug:true}
+  {key:'actionNote',    header:'הערת פעולה',      type:'string', group:'מטא',   aug:true},
+  // מיקום ידני בלוח (נקבע בגרירה). aug + group מטא → מוסתר מהטופס, נשמר בייבוא.
+  {key:'boardStage',    header:'עמודת לוח',       type:'string', group:'מטא',   aug:true}
 ];
+
+// תזכורות-מעבר: כשגוררים כרטיס לשלב יעד, אילו אבני-דרך כדאי שכבר יסומנו.
+// אם חסר — קופצת תזכורת (לא חוסמת). מפתח: תוכנית → טקסט-השלב → [{key,label}].
+var STAGE_REQUIRES = {
+  'הדיאלוגי': {
+    '4 · ריאיון':            [{key:'payReg', label:'דמי הרשמה (300)'}],
+    '5 · ועדה / מכתב קבלה':  [{key:'payInterview', label:'תשלום למראיין'}],
+    '6 · נרשם (מקדמה 1200)': [{key:'payDeposit', label:'מקדמה (1200)'}]
+  },
+  'תעודה': {
+    '3 · נרשם (דמי הרשמה 300)': [{key:'payReg', label:'דמי הרשמה (300)'}]
+  }
+};
 
 // מילון נרדפות: לכל field key — כותרות אפשריות בקובץ החי (לזיהוי עמודות גמיש).
 var SOURCE_SYNONYMS = {
