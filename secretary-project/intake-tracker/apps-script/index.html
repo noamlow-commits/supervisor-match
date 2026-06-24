@@ -40,6 +40,8 @@
   .pill.pay{background:#c6f6d5;color:#22543d}
   .pill.wait{background:#fed7aa;color:#7b341e}
   .pill.gate{background:#fde2e2;color:#9b2c2c}
+  #moodleAlert{background:#fff0e0;color:#9a4f00;border:1px solid #f0c890;border-radius:7px;padding:7px 12px;cursor:pointer;font-size:13px;font-weight:600;animation:pulse 1.8s infinite}
+  @keyframes pulse{0%,100%{box-shadow:0 0 0 0 #f0a85066}50%{box-shadow:0 0 0 5px #f0a85000}}
   /* cross-cutting table */
   .tbl-wrap{padding:12px 14px;height:calc(100vh - 112px);overflow:auto}
   .tbl-bar{display:flex;gap:10px;align-items:center;margin-bottom:10px;flex-wrap:wrap}
@@ -92,9 +94,11 @@
   <div class="tabs">
     <button id="tab-board" class="active" onclick="show('board')">לוח</button>
     <button id="tab-table" onclick="show('table')">טבלה רוחבית</button>
+    <button id="tab-courses" onclick="show('courses')">קורסים</button>
     <button id="tab-dash" onclick="show('dash')">דשבורד</button>
     <button id="tab-contacts" onclick="show('contacts')">אנשי קשר</button>
   </div>
+  <button id="moodleAlert" onclick="show('courses')" style="display:none">📌 <span id="moodleCount">0</span> קורסים להכניס למודל</button>
   <span class="sp"></span>
   <button class="btn" onclick="doImport()" title="מושך רק פניות חדשות מהקובץ הישן — לא דורס מה שעדכנת כאן">⟳ משיכת חדשים מהארכיב</button>
   <button class="btn" onclick="openNew()">+ פנייה חדשה</button>
@@ -111,6 +115,7 @@
 
 <div id="view-board"><div class="board" id="board"><div class="spin">טוען…</div></div></div>
 <div id="view-table" style="display:none"><div id="tableView"></div></div>
+<div id="view-courses" style="display:none"><div class="dash" id="courses" style="grid-template-columns:1fr"></div></div>
 <div id="view-dash" style="display:none"><div class="dash" id="dash"></div></div>
 <div id="view-contacts" style="display:none"><div class="dash" id="contacts" style="grid-template-columns:1fr"></div></div>
 
@@ -147,14 +152,17 @@ function awaitingPayment(r){ if(r.recordType==='איש-קשר')return false; if(
 function show(v){
   document.getElementById('view-board').style.display = v==='board'?'':'none';
   document.getElementById('view-table').style.display = v==='table'?'':'none';
+  document.getElementById('view-courses').style.display = v==='courses'?'':'none';
   document.getElementById('view-dash').style.display  = v==='dash'?'':'none';
   document.getElementById('view-contacts').style.display = v==='contacts'?'':'none';
   document.getElementById('bar').style.display = v==='board'?'':'none';
   document.getElementById('tab-board').classList.toggle('active', v==='board');
   document.getElementById('tab-table').classList.toggle('active', v==='table');
+  document.getElementById('tab-courses').classList.toggle('active', v==='courses');
   document.getElementById('tab-dash').classList.toggle('active', v==='dash');
   document.getElementById('tab-contacts').classList.toggle('active', v==='contacts');
   if (v==='table') renderTable();
+  if (v==='courses') renderCourses();
   if (v==='dash') loadDash();
   if (v==='contacts') renderContacts();
 }
@@ -176,6 +184,7 @@ function load(){
     document.getElementById('legend').innerHTML = progs.map(function(p){
       return '<span class="lg"><span class="dot" style="background:'+progColor(p)+'"></span>'+esc(p)+'</span>';
     }).join('');
+    updateMoodleAlert();
     render();
   }).withFailureHandler(err).apiBoard();
 }
@@ -217,7 +226,7 @@ function render(){
   var payOnly = document.getElementById('payOnly').checked;
   var q = document.getElementById('search').value.trim();
   var rows = DATA.rows.filter(function(r){
-    if (r.recordType==='איש-קשר') return false;   // אנשי קשר מוצגים בלשונית נפרדת
+    if (r.recordType!=='פנייה') return false;   // אנשי קשר / קורסים — בלשוניות נפרדות
     if (prog && canonProg(r.program)!==prog) return false;
     if (remOnly && !r.reminder) return false;
     if (payOnly && !awaitingPayment(r)) return false;
@@ -246,7 +255,7 @@ function render(){
       var fees = paidFees(r);
       var payPill = fees.length ? '<span class="pill pay">💳 '+esc(fees.join('+'))+'</span>'
         : (awaitingPayment(r) ? '<span class="pill wait">💳 ממתין לתשלום</span>' : '');
-      var gate = r.gateWarn ? '<span class="pill gate">⚠ דמי הרשמה</span>' : '';
+      var gate = r.gateWarn ? '<span class="pill gate" title="'+esc(r.gateWarn)+'">⚠ חסר לריאיון</span>' : '';
       c.innerHTML = '<div class="nm">'+esc(r.name||'(ללא שם)')+'</div>'+
         '<div class="meta"><span class="dot" style="background:'+progColor(r.program||'')+'"></span>'+esc(canonProg(r.program)||'')+(r.phone?' · '+esc(r.phone):'')+'</div>'+
         '<span class="pill'+(r.reminder?' rem':'')+'">'+esc(r.nextAction||'')+
@@ -256,6 +265,19 @@ function render(){
     if (!inStage.length){ var e=document.createElement('div'); e.className='empty'; e.style.cssText='padding:14px;font-size:12px'; e.textContent='—'; cards.appendChild(e); }
     col.appendChild(cards); board.appendChild(col);
   });
+}
+
+// שינוי שלב מתוך הכרטיס — זהה לגרירה (אזהרת מעבר + עדכון מיקום ידני).
+function onCardStageChange(id, stage){
+  var r = rowById(id); if (!r) return;
+  var prog = canonProg(r.program);
+  var reqs = (DATA.stageRequires && DATA.stageRequires[prog] && DATA.stageRequires[prog][stage]) || [];
+  var missing = reqs.filter(function(qq){ return !truthy_(r[qq.key]); });
+  if (missing.length){
+    if (!confirm('לפני "'+stage+'" כדאי לוודא:\n• '+missing.map(function(m){return m.label;}).join('\n• ')+'\n\nלשנות בכל זאת?')){ closeOv(); openEdit(id); return; }
+  }
+  toast('מעדכן שלב…');
+  google.script.run.withSuccessHandler(function(){ toast('השלב עודכן'); closeOv(); load(); }).withFailureHandler(err).apiUpdate({id:id, boardStage:stage});
 }
 
 // גרירה הסתיימה על עמודה → מעבר לשלב, עם תזכורת אם חסרות אבני-דרך.
@@ -292,6 +314,19 @@ function buildModal(rec, isNew){
   // אזהרת שער (רכה) — בהדיאלוגי, ריאיון מחייב דמי הרשמה תחילה. לא חוסם.
   if (rec.gateWarn){
     html += '<div style="background:#fde2e2;color:#9b2c2c;border:1px solid #f5b5b5;border-radius:8px;padding:9px 11px;margin-bottom:12px;font-size:12.5px">⚠ '+esc(rec.gateWarn)+'</div>';
+  }
+  // בקרת שלב בכרטיס — כמו גרירה: אפשר לשנות ידנית, עם אזהרה אם דילגת על שלב.
+  if (!isNew && rec.recordType==='פנייה'){
+    var sf = DATA.funnels && DATA.funnels[canonProg(rec.program)];
+    if (sf){
+      var curStage = (rec.boardStage && sf.indexOf(rec.boardStage)>=0) ? rec.boardStage : rec.stage;
+      var opts = sf.slice(); if (String(rec.stage||'').indexOf('✗')>=0 && opts.indexOf('✗ סגור')<0) opts.push('✗ סגור');
+      html += '<div class="grp"><h4>שלב במשפך</h4>'+
+        '<select id="cardStage" onchange="onCardStageChange(\''+rec.id+'\', this.value)">'+
+        opts.map(function(s){return '<option'+(s===curStage?' selected':'')+'>'+esc(s)+'</option>';}).join('')+
+        '</select>'+
+        '<div style="font-size:11px;color:var(--muted);margin-top:3px">שינוי ידני יזיז את הכרטיס (עם אזהרה אם דילגת). סימון עובדה בכרטיס יחזיר לחישוב האוטומטי.</div></div>';
+    }
   }
   Object.keys(groups).forEach(function(g){
     html += '<div class="grp"><h4>'+esc(g)+'</h4><div class="fields">';
@@ -446,7 +481,7 @@ function _boolTd(b,yes,no){ return b?_td('cell-ok',yes||'✓'):_td('cell-pend',n
 
 function renderTable(){
   var host=document.getElementById('tableView');
-  var all=DATA.rows.filter(function(r){return r.recordType!=='איש-קשר';});
+  var all=DATA.rows.filter(function(r){return r.recordType==='פנייה';});
   var tProg=window._tblProg||'', tNeed=!!window._tblNeed;
   var progs=(DATA.activePrograms||[]);
   var rows=all.filter(function(r){
@@ -491,6 +526,35 @@ function renderTable(){
   }).join('');
 
   host.innerHTML='<div class="tbl-wrap">'+bar+'<table class="cross"><thead>'+head+'</thead><tbody>'+body+'</tbody></table></div>';
+}
+
+/* ===== קורסים — רישום עצמאי + התראת "להכניס למודל" ===== */
+function renderCourses(){
+  var list = DATA.rows.filter(function(r){ return r.recordType==='קורס'; });
+  list.sort(function(a,b){ return (truthy_(b.needsMoodle)?1:0)-(truthy_(a.needsMoodle)?1:0); });
+  var pending = list.filter(function(r){ return truthy_(r.needsMoodle); }).length;
+  var rowsHtml = list.map(function(r){
+    var moodle = truthy_(r.needsMoodle)
+      ? '<button class="btn" style="padding:4px 9px;font-size:12px" onclick="markMoodle(\''+r.id+'\')">✓ הוכנס למודל</button>'
+      : '<span class="cell-ok" style="padding:2px 8px;border-radius:6px">✓ במודל</span>';
+    return '<tr'+(truthy_(r.needsMoodle)?' style="background:#fff7ec"':'')+'>'+
+      '<td class="nm"><a href="#" onclick="openEdit(\''+r.id+'\');return false">'+esc(r.name||'(ללא שם)')+'</a></td>'+
+      '<td>'+esc(r.program||'')+'</td><td>'+esc(r.phone||'')+'</td><td>'+esc(r.email||'')+'</td>'+
+      '<td>'+esc(r.payNote||'')+'</td><td>'+moodle+'</td></tr>';
+  }).join('');
+  var html = '<div class="panel"><h2>רישומי קורסים ('+list.length+')'+(pending?' · <span style="color:#9a4f00">📌 '+pending+' להכניס למודל</span>':'')+'</h2>'+
+    '<table><tr><th>שם</th><th>קורס</th><th>טלפון</th><th>מייל</th><th>תשלום</th><th>למודל</th></tr>'+rowsHtml+'</table></div>';
+  document.getElementById('courses').innerHTML = list.length ? html : '<div class="empty">אין רישומי קורסים</div>';
+}
+function markMoodle(id){
+  toast('מעדכן…');
+  google.script.run.withSuccessHandler(function(){ toast('סומן: הוכנס למודל'); load(); }).withFailureHandler(err).apiUpdate({id:id, needsMoodle:false});
+}
+function updateMoodleAlert(){
+  var n = DATA.rows.filter(function(r){ return r.recordType==='קורס' && truthy_(r.needsMoodle); }).length;
+  var el = document.getElementById('moodleAlert');
+  document.getElementById('moodleCount').textContent = n;
+  el.style.display = n ? '' : 'none';
 }
 
 function copyTpl(){

@@ -36,7 +36,7 @@ var FEE_DEPOSIT      = 1200;
 var SCHEMA = [
   // זיהוי
   {key:'id',            header:'מזהה',            type:'string', group:'זיהוי'},
-  {key:'recordType',    header:'סוג רשומה',       type:'string', group:'זיהוי', options:['פנייה','איש-קשר']},
+  {key:'recordType',    header:'סוג רשומה',       type:'string', group:'זיהוי', options:['פנייה','איש-קשר','קורס']},
   {key:'program',       header:'תוכנית',          type:'string', group:'זיהוי'},
   {key:'cycle',         header:'מחזור',           type:'string', group:'זיהוי'},
   {key:'inquiryDate',   header:'תאריך פנייה',     type:'date',   group:'זיהוי'},
@@ -94,6 +94,8 @@ var SCHEMA = [
   {key:'noInterest',    header:'סיבה שאין עניין', type:'string', group:'תוצאה'},
   {key:'inCRM',         header:'נרשם בCRM',       type:'bool',   group:'תוצאה'},
   {key:'crmNote',       header:'הערות בCRM',      type:'string', group:'תוצאה'},
+  // קורסים: רישום עצמאי שדורש הכנסה ידנית למודל (התראה לטל)
+  {key:'needsMoodle',   header:'להכניס למודל',    type:'bool',   group:'תוצאה', aug:true},
   // מחושב
   {key:'stage',         header:'שלב במשפך',       type:'string', group:'מחושב', computed:true},
   {key:'nextAction',    header:'פעולה הבאה',      type:'string', group:'מחושב', computed:true},
@@ -165,6 +167,17 @@ var PROGRAM_COLORS = { 'הדיאלוגי':'#2b6cb0', 'תעודה':'#2f855a', 'א
 // עוגן ההרשמה — איזה תשלום פירושו "נרשם" בכל תוכנית:
 //   הדיאלוגי = מקדמה · תעודה = דמי הרשמה · אח"ד = תשלום מלא (כל תשלום)
 var PROGRAM_REG_ANCHOR = { 'הדיאלוגי':'payDeposit', 'תעודה':'payReg', 'אח"ד':'payFull' };
+
+// קורסים שנמכרים דרך קארדקום ודורשים רישום עצמאי + התראה לטל (הכנסה ידנית למודל).
+// לכל קורס: ביטוי-זיהוי בתיאור המוצר + שם תצוגה. להוסיף קורסים נוספים כאן.
+var COURSE_PRODUCTS = [
+  { match: /רבי\s*נחמן|ברסלב/, name: 'קורס רבי נחמן מברסלב' }
+];
+function courseFromProduct_(desc){
+  var d = String(desc || '');
+  for (var i = 0; i < COURSE_PRODUCTS.length; i++){ if (COURSE_PRODUCTS[i].match.test(d)) return COURSE_PRODUCTS[i].name; }
+  return '';
+}
 
 // נרמול שם תוכנית: שם לשונית ארוך / תווית → אחת משלוש התוויות הנקיות.
 // מחזיר את הקלט כפי שהוא אם לא זוהה (למשל רשימת אנשי-קשר).

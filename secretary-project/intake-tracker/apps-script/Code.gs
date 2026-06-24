@@ -63,6 +63,12 @@ function apiUpdate(patch){
     if (!c || c.computed) return;
     target[k] = patch[k];
   });
+  // אם שונתה עובדה כלשהי (לא רק מיקום-לוח ידני) — מבטלים את הצמדת המיקום הידני,
+  // כדי שסימון אבן-דרך תמיד יזיז את הכרטיס לפי המשפך המחושב (תיקון "לא מגיב").
+  var changedFacts = Object.keys(patch).some(function(k){
+    return k !== 'id' && k !== 'boardStage' && schemaByKey()[k] && !schemaByKey()[k].computed;
+  });
+  if (changedFacts) target.boardStage = '';
   target.updatedAt = todayStr_();
   writeRow_(sh, target._row, target);
   computeRow_(target);
@@ -99,7 +105,7 @@ function apiDashboard(){
   var byProgram = {};
   var reminders = [], outstanding = [];
   rows.forEach(function(o){
-    if (o.recordType === 'איש-קשר') return;   // אנשי קשר אינם חלק מהמשפך
+    if (o.recordType !== 'פנייה') return;   // אנשי קשר / קורסים אינם חלק מהמשפך
     var p = o.program || '(ללא תוכנית)';
     byProgram[p] = byProgram[p] || {};
     byProgram[p][o.stage] = (byProgram[p][o.stage]||0) + 1;

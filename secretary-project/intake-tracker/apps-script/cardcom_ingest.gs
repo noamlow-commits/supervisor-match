@@ -73,30 +73,64 @@ function ingestCardcomReceipts(){
   var sh = inquiriesSheet_();
   var rows = readInquiries_();
   var idx = {byEmail:{}, byPhone:{}, byName:{}};
+  var seenTxn = {};
   rows.forEach(function(o){
     var e = String(o.email || '').trim().toLowerCase(); if (e) idx.byEmail[e] = o;
     var p = cleanPhone_(o.phone); if (p) idx.byPhone[p] = o;
     var n = normHeader_(o.name);  if (n) idx.byName[n] = o;
+    (String(o.payNote || '').match(/\d{7,}/g) || []).forEach(function(x){ seenTxn[x] = 1; });   // מס' עסקה שכבר נרשמו
   });
 
-  var applied = 0, nomatch = 0;
+  var applied = 0, nomatch = 0, courses = 0;
   threads.forEach(function(t){
     t.getMessages().forEach(function(m){
       var rec = parseCardcom_(msgText_(m));
       if (!rec || !rec.success) return;
+      if (rec.txn && seenTxn[rec.txn]) return;   // עסקה כבר טופלה
+
+      // קורס (רבי נחמן וכו') → רישום עצמאי + התראה לטל להכניס למודל (לא חלק מהמשפך).
+      var course = courseFromProduct_(rec.desc);
+      if (course){
+        createCourseRegistration_(sh, rec, course);
+        if (rec.txn) seenTxn[rec.txn] = 1;
+        courses++;
+        return;
+      }
+
       var kind = cardcomKind_(rec.desc, rec.amount);
-      if (!kind) { Logger.log('סוג תשלום לא זוהה: desc="' + rec.desc + '" amount=' + rec.amount); return; }
+      if (!kind) { Logger.log('מוצר שאינו תשלום-מסלול ולא קורס מוכר — מדולג: desc="' + rec.desc + '" amount=' + rec.amount); return; }
       var o = matchInquiry_(idx, rec);
       if (!o) { nomatch++; Logger.log('אין התאמה לפנייה: ' + rec.name + ' / ' + rec.email + ' / ' + rec.phone + ' (' + kind.label + ' ' + rec.amount + ')'); return; }
-      if (rec.txn && String(o.payNote || '').indexOf(rec.txn) >= 0) return;   // כבר טופל
       applyCardcomPayment_(sh, o, kind, rec);
+      if (rec.txn) seenTxn[rec.txn] = 1;
       applied++;
     });
     t.addLabel(label);
   });
 
-  Logger.log('סומנו ' + applied + ' תשלומים; ללא התאמה: ' + nomatch + '.');
-  return {applied:applied, nomatch:nomatch};
+  Logger.log('סומנו ' + applied + ' תשלומים; רישומי קורס: ' + courses + '; ללא התאמה: ' + nomatch + '.');
+  return {applied:applied, courses:courses, nomatch:nomatch};
+}
+
+// רישום קורס עצמאי (recordType=קורס) עם דגל "להכניס למודל" → התראה לטל.
+function createCourseRegistration_(sh, rec, courseName){
+  var o = {
+    id: 'C' + Utilities.getUuid().slice(0, 8),
+    recordType: 'קורס',
+    program: courseName,
+    name: rec.name || '',
+    email: rec.email || '',
+    phone: rec.phone || '',
+    inquiryDate: todayStr_(),
+    status: 'ממתין למודל',
+    needsMoodle: true,
+    source: 'cardcom',
+    payNote: 'קורס: ' + (rec.amount || '') + '₪ (CardCom ' + (rec.txn || '') + ')',
+    updatedAt: todayStr_()
+  };
+  sh.appendRow(lineForSheet_(sh, o));
+  var ph = sh.getRange(1, 1, 1, sh.getLastColumn()).getValues()[0].indexOf('טלפון');
+  if (ph >= 0 && o.phone){ var c = sh.getRange(sh.getLastRow(), ph + 1); c.setNumberFormat('@'); c.setValue(String(o.phone)); }
 }
 
 // אבחון: מדפיס מה נפענח מכל חשבונית ואם נמצאה התאמה (בלי לשנות דבר).
