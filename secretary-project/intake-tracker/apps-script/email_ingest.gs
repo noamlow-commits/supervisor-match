@@ -30,10 +30,17 @@ function ingestQuery_(){
   return base + ' -label:"' + INGEST_LABEL + '"';
 }
 
-function ingestRegistrationEmails(){
+function ingestRegistrationEmails(){ return doIngest_(false); }
+// חד-פעמי לתיקון: מעבד גם מיילים מתויגים (יוצר רשומות שלא נוצרו, למשל בגלל כוכביות בהעברה).
+// הדה-דופ לפי קוד/טלפון מונע כפילות של רשומות שכבר קיימות.
+function reingestRegistrations(){ return doIngest_(true); }
+
+function doIngest_(includeProcessed){
   var label = GmailApp.getUserLabelByName(INGEST_LABEL) || GmailApp.createLabel(INGEST_LABEL);
-  var threads = GmailApp.search(ingestQuery_(), 0, 50);
-  if (!threads.length){ Logger.log('אין מיילים חדשים לקליטה.'); return {added:0, dup:0}; }
+  var q = INGEST_SOURCE_LABEL ? 'label:"' + INGEST_SOURCE_LABEL + '"' : '"הודעה על רישום"';
+  if (!includeProcessed) q += ' -label:"' + INGEST_LABEL + '"';
+  var threads = GmailApp.search(q, 0, 50);
+  if (!threads.length){ Logger.log('אין מיילים לקליטה.'); return {added:0, dup:0}; }
 
   ensureColumns_();
   var sh = inquiriesSheet_();
@@ -47,7 +54,12 @@ function ingestRegistrationEmails(){
   var added = 0, dup = 0;
   threads.forEach(function(t){
     t.getMessages().forEach(function(m){
-      parseRegistrations_(m.getPlainBody()).forEach(function(rec){
+      var text = msgText_(m);
+      // התוכנית מקודדת בכותרת המייל (נושא ה-Amax). מנסים גם את כותרת ה-Gmail וגם
+      // את שורת "Subject:" שבגוף (במייל מועבר). אם לא זוהתה → ריק (לשיוך ע"י טל).
+      var subj = String(m.getSubject() || '') + ' ' + ((text.match(/Subject:\s*([^\n\r]+)/) || [])[1] || '');
+      var prog = programFromSubject_(subj);
+      parseRegistrations_(text).forEach(function(rec){
         // שכבת-אימות 2: רשומה אמיתית רק אם יש מזהה-קשר (קוד לקוח / טלפון / מייל) — דוחה מיילים אחרים
         if (!rec.crmCode && !rec.phone && !rec.email) return;
         var isDup = (rec.crmCode && seenCrm[rec.crmCode]) || (rec.phone && seenPhone[cleanPhone_(rec.phone)]);
@@ -55,7 +67,7 @@ function ingestRegistrationEmails(){
         var o = {
           id: 'E' + Utilities.getUuid().slice(0, 8),
           recordType: 'פנייה',
-          program: '',                       // ללא תוכנית — לשיוך ע"י טל
+          program: prog,                     // מזוהה מכותרת המייל (ריק אם לא זוהה → לשיוך ע"י טל)
           cycle: rec.cycle || '',
           inquiryDate: fmtDate_(m.getDate()),
           channel: 'אתר',
@@ -87,7 +99,8 @@ function ingestRegistrationEmails(){
 // פענוח גוף המייל → רשומות. תומך בכמה "הודעה על רישום" באותו מייל.
 function parseRegistrations_(body){
   if (!body) return [];
-  var segments = String(body).split(/הודעה על רישום/);
+  // מסירים כוכביות (bold של Gmail בהעברה) שמפרקות את התוויות, למשל "*קוד לקוח* :206816".
+  var segments = String(body).replace(/\*/g, ' ').split(/הודעה על רישום/);
   var out = [];
   for (var i = 1; i < segments.length; i++){      // [0] = לפני ההודעה הראשונה
     var seg = segments[i];
@@ -110,6 +123,73 @@ function parseRegistrations_(body){
   return out;
 }
 function ingestGrab_(s, re){ var m = String(s || '').match(re); return m ? m[1].trim() : ''; }
+
+// מיפוי כותרת-המייל (נושא ה-Amax) → תוכנית קנונית. ⚠️ לעדכן לפי הכותרות האמיתיות של כל טופס Amax.
+// נצפו: "מתענייני פסיכותרפיה" (= הדיאלוגי, להערכתי). מחזיר '' אם לא זוהה → טל משייכת.
+function programFromSubject_(s){
+  s = String(s || '');
+  if (/פסיכותרפי|דיאלוג|הדיאלוגי/.test(s)) return 'הדיאלוגי';
+  if (/צמצום|תעוד|תהוד/.test(s))           return 'תעודה';
+  if (/אח["׳׳']?ד|תוכנית אח/.test(s)) return 'אח"ד';
+  return '';
+}
+
+// טקסט המייל: גוף רגיל; אם ריק (מייל HTML בלבד) → המרת ה-HTML לטקסט.
+function msgText_(m){
+  var t = m.getPlainBody() || '';
+  if (t.trim()) return t;
+  var html = m.getBody() || '';
+  return html
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<\/(p|div|tr|li|h\d|td)>/gi, '\n')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&nbsp;/gi, ' ').replace(/&amp;/gi, '&').replace(/&lt;/gi, '<')
+    .replace(/&gt;/gi, '>').replace(/&#39;|&apos;/gi, "'").replace(/&quot;/gi, '"')
+    .replace(/[ \t]+/g, ' ');
+}
+
+// חד-פעמי: משייך תוכנית (מהכותרת) לפניות שכבר נקלטו עם תוכנית ריקה (אריאל/צביה וכו').
+// קורא גם מיילים מתויגים; מעדכן רק רשומות שתוכניתן ריקה. בטוח להריץ שוב.
+function backfillProgramFromSubject(){
+  ensureColumns_();
+  var sh = inquiriesSheet_();
+  var rows = readInquiries_();
+  var byCrm = {}, byPhone = {};
+  rows.forEach(function(o){ var c=String(o.crmCode||'').trim(); if(c) byCrm[c]=o; var p=cleanPhone_(o.phone); if(p) byPhone[p]=o; });
+  var threads = GmailApp.search('"הודעה על רישום" OR from:amax.co.il', 0, 50);
+  var updated = 0;
+  threads.forEach(function(t){
+    t.getMessages().forEach(function(m){
+      var text = msgText_(m);
+      var subj = String(m.getSubject() || '') + ' ' + ((text.match(/Subject:\s*([^\n\r]+)/) || [])[1] || '');
+      var prog = programFromSubject_(subj);
+      if (!prog) return;
+      parseRegistrations_(text).forEach(function(rec){
+        var o = (rec.crmCode && byCrm[rec.crmCode]) || (rec.phone && byPhone[cleanPhone_(rec.phone)]);
+        if (o && !String(o.program || '').trim()){ o.program = prog; writeRow_(sh, o._row, o); updated++; }
+      });
+    });
+  });
+  Logger.log('עודכנו ' + updated + ' פניות עם תוכנית מהכותרת.');
+  return {updated:updated};
+}
+
+// אבחון: מדפיס ביומן את רשומות ה-amax הקיימות + מה שחולץ מכל מייל הרשמה.
+function diagBackfill(){
+  var rows = readInquiries_();
+  var amax = rows.filter(function(o){ return String(o.source) === 'amax'; });
+  Logger.log('סהכ רשומות: ' + rows.length + ' | מתוכן amax: ' + amax.length);
+  amax.forEach(function(o){ Logger.log('  רשומה: ' + o.name + ' | crm=' + o.crmCode + ' | phone=' + o.phone + ' | program="' + o.program + '"'); });
+  var threads = GmailApp.search('"הודעה על רישום" OR from:amax.co.il', 0, 50);
+  Logger.log('מיילי הרשמה: ' + threads.length + ' threads');
+  threads.forEach(function(t){ t.getMessages().forEach(function(m){
+    var text = msgText_(m);
+    var subj = String(m.getSubject() || '') + ' ' + ((text.match(/Subject:\s*([^\n\r]+)/) || [])[1] || '');
+    var prog = programFromSubject_(subj);
+    var recs = parseRegistrations_(text);
+    Logger.log('  מייל: "' + m.getSubject() + '" → prog="' + prog + '" | חולצו ' + recs.length + ': ' + recs.map(function(r){ return r.name + '/' + r.crmCode + '/' + r.phone; }).join(' ; '));
+  }); });
+}
 
 // ── הרצה/התקנה ידנית ───────────────────────────────────────────
 function testIngestOnce(){ return ingestRegistrationEmails(); }
