@@ -17,13 +17,16 @@
 var CARDCOM_LABEL = 'נקלט-תשלום';
 var CARDCOM_QUERY = '(from:cardcom.co.il OR CardCom OR "אישורית זהב") -label:"' + CARDCOM_LABEL + '"';
 
-// תיאור/סכום → אבן-הדרך של התשלום (+ שדות סכום/תאריך/קבלה הקיימים בסכמה).
+// תיאור המוצר (מתוך שורת "פריט" בחשבונית) → אבן-הדרך של התשלום.
+// ⚠️ הטרמינל מוכר מוצרים רבים (קורסים, ספרים…). ממפים רק את דמי-המסלול; אחרת מתעלמים.
 function cardcomKind_(desc, amount){
   var d = String(desc || '');
-  if (/מקדמה/.test(d) || amount === 1200)            return {bool:'payDeposit',  sum:'payDepositSum',  date:'payDepositDate', rcpt:null,         label:'מקדמה'};
-  if (/ראיון/.test(d))                                return {bool:'payInterview',sum:null,             date:null,            rcpt:null,         label:'דמי ראיון'};
-  if (/שכר\s*לימוד|שכ.?["׳']?ל/.test(d))              return {bool:'payTuition',  sum:'payTuitionSum',  date:null,            rcpt:null,         label:'שכר לימוד'};
-  if (/הרשמה/.test(d) || amount === 300)              return {bool:'payReg',      sum:'payRegSum',      date:'payRegDate',    rcpt:'payRegRcpt', label:'דמי הרשמה'};
+  if (!d) return null;
+  if (/קורס|סדנ|כנס|הרצא|מפגש|ספר|כרטיס|תרומ|שיעור/.test(d)) return null;   // מוצר אחר — לא תשלום מסלול
+  if (/מקדמה/.test(d))                      return {bool:'payDeposit',  sum:'payDepositSum',  date:'payDepositDate', rcpt:null,         label:'מקדמה'};
+  if (/דמי\s*ראיון|תשלום\s*ראיון/.test(d))  return {bool:'payInterview',sum:null,             date:null,            rcpt:null,         label:'דמי ראיון'};
+  if (/שכר\s*לימוד/.test(d))                return {bool:'payTuition',  sum:'payTuitionSum',  date:null,            rcpt:null,         label:'שכר לימוד'};
+  if (/דמי\s*הרשמה|הרשמה/.test(d))          return {bool:'payReg',      sum:'payRegSum',      date:'payRegDate',    rcpt:'payRegRcpt', label:'דמי הרשמה'};
   return null;
 }
 
@@ -34,7 +37,8 @@ function parseCardcom_(text){
   return {
     amount:  toNum_(ingestGrab_(t, /סה.?כ\s*חיוב\s*([\d,]+)/)),
     success: /בוצע[ה]?\s*בהצלחה|רכישה מוצלחת/.test(t),
-    desc:    (/(דמי הרשמה|מקדמה|דמי ראיון|שכר לימוד|שכ["׳']?ל)/.exec(t) || [])[1] || '',
+    // תיאור המוצר מתוך שורת "פריט <קוד> <מס'> <תיאור> <כמות> <סכום>".
+    desc:    ingestGrab_(t, /פריט\s+\S+\s+\d+\s+([^\n\r]+?)\s+\d+\s+[\d,]+/) || ingestGrab_(t, /תיאור\s+([^\n\r]+)/),
     name:    ingestGrab_(t, /שם בעל הכרטיס\s*([^\n\r]+)/),
     email:   ingestGrab_(t, /דוא?["׳']?ר\s+([^\s]+@[^\s]+)/),
     phone:   ingestGrab_(t, /טלפון\s*נייד\s*([0-9]{7,})/),
