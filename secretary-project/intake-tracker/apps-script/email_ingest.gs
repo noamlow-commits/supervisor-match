@@ -59,6 +59,8 @@ function doIngest_(includeProcessed){
       // את שורת "Subject:" שבגוף (במייל מועבר). אם לא זוהתה → ריק (לשיוך ע"י טל).
       var subj = String(m.getSubject() || '') + ' ' + ((text.match(/Subject:\s*([^\n\r]+)/) || [])[1] || '');
       var prog = programFromSubject_(subj);
+      // תאריך הפנייה המקורי (שורת Date של Amax, YYYY-MM-DD) — לדיוק דוח-פרסום; אחרת תאריך המייל.
+      var origDate = (text.match(/Date:\s*(\d{4}-\d{2}-\d{2})/) || [])[1] || fmtDate_(m.getDate());
       parseRegistrations_(text).forEach(function(rec){
         // שכבת-אימות 2: רשומה אמיתית רק אם יש מזהה-קשר (קוד לקוח / טלפון / מייל) — דוחה מיילים אחרים
         if (!rec.crmCode && !rec.phone && !rec.email) return;
@@ -69,7 +71,7 @@ function doIngest_(includeProcessed){
           recordType: 'פנייה',
           program: prog,                     // מזוהה מכותרת המייל (ריק אם לא זוהה → לשיוך ע"י טל)
           cycle: rec.cycle || '',
-          inquiryDate: fmtDate_(m.getDate()),
+          inquiryDate: origDate,
           channel: 'אתר',
           crmCode: rec.crmCode || '',
           name: rec.name || '',
