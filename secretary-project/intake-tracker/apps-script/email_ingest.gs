@@ -191,12 +191,28 @@ function diagBackfill(){
   }); });
 }
 
-// ── הרצה/התקנה ידנית ───────────────────────────────────────────
-function testIngestOnce(){ return ingestRegistrationEmails(); }
-function installEmailIngestTrigger(){
-  ScriptApp.getProjectTriggers().forEach(function(t){
-    if (t.getHandlerFunction() === 'ingestRegistrationEmails') ScriptApp.deleteTrigger(t);
-  });
-  ScriptApp.newTrigger('ingestRegistrationEmails').timeBased().everyHours(1).create();
-  Logger.log('✅ טריגר קליטה הותקן — כל שעה.');
+// ── לוח-זמנים מתוזמן (פניות + תשלומים) ─────────────────────────
+// כל 10 דק' ב-8:00–12:00 וב-18:00–20:30 (שעות העומס של טל); אחרת ~שעתי.
+function scheduledIngest(){
+  var tz = Session.getScriptTimeZone();
+  var now = new Date();
+  var h = parseInt(Utilities.formatDate(now, tz, 'H'), 10);
+  var m = parseInt(Utilities.formatDate(now, tz, 'm'), 10);
+  var morning = (h >= 8 && h < 12);
+  var evening = (h === 18 || h === 19 || (h === 20 && m <= 30));
+  if (!(morning || evening || m < 10)) return;   // מחוץ לחלונות → רק בראש השעה
+  try { ingestRegistrationEmails(); } catch (e) { Logger.log('שגיאת קליטת פניות: ' + e); }
+  try { if (typeof ingestCardcomReceipts === 'function') ingestCardcomReceipts(); } catch (e) { Logger.log('שגיאת קליטת תשלומים: ' + e); }
 }
+
+// מתקין את לוח-הזמנים (מחליף טריגרים קודמים). הריצו פעם אחת.
+function installSchedule(){
+  ScriptApp.getProjectTriggers().forEach(function(t){
+    if (['scheduledIngest','ingestRegistrationEmails','ingestCardcomReceipts'].indexOf(t.getHandlerFunction()) >= 0) ScriptApp.deleteTrigger(t);
+  });
+  ScriptApp.newTrigger('scheduledIngest').timeBased().everyMinutes(10).create();
+  Logger.log('✅ לוח-זמנים הותקן: כל 10 דק׳ ב-8:00–12:00 וב-18:00–20:30, אחרת שעתי (פניות + תשלומים).');
+}
+
+// ── הרצה ידנית ─────────────────────────────────────────────────
+function testIngestOnce(){ return ingestRegistrationEmails(); }
