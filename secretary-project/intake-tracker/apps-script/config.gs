@@ -106,7 +106,9 @@ var SCHEMA = [
   {key:'snoozeUntil',   header:'דחיית תזכורת עד', type:'date',   group:'מטא',   aug:true},
   {key:'actionNote',    header:'הערת פעולה',      type:'string', group:'מטא',   aug:true},
   // מיקום ידני בלוח (נקבע בגרירה). aug + group מטא → מוסתר מהטופס, נשמר בייבוא.
-  {key:'boardStage',    header:'עמודת לוח',       type:'string', group:'מטא',   aug:true}
+  {key:'boardStage',    header:'עמודת לוח',       type:'string', group:'מטא',   aug:true},
+  // מתי הפנייה נכנסה לשלב הנוכחי — לחישוב התיישנות (מסגרות 5/10 ימים). מתעדכן בתזוזת שלב.
+  {key:'stageSince',    header:'בשלב מאז',        type:'date',   group:'מטא',   aug:true}
 ];
 
 // תזכורות-מעבר: כשגוררים כרטיס לשלב יעד, אילו אבני-דרך כדאי שכבר יסומנו.
@@ -119,6 +121,25 @@ var STAGE_REQUIRES = {
   },
   'תעודה': {
     '3 · נרשם (דמי הרשמה 300)': [{key:'payReg', label:'דמי הרשמה (300)'}]
+  }
+};
+
+// גרירה לשלב → אילו אבני-דרך לסמן אוטומטית (כדי שהגרירה תעדכן את הנתונים, לא רק את המיקום).
+// שלב שאינו כאן → גרירה מזיזה מיקום ידני בלבד (boardStage).
+var STAGE_APPLY = {
+  'הדיאלוגי': {
+    '1 · שיחה והתאמה':        {spoke:true},
+    '4 · ריאיון':             {interview:'נקבע'},
+    '5 · ועדה / מכתב קבלה':   {interview:'התקבל'},
+    '6 · נרשם (מקדמה 1200)':  {payDeposit:true}
+  },
+  'תעודה': {
+    '1 · שיחה והתאמה':        {spoke:true},
+    '2 · ריאיון (הרב רונן)':  {interview:'נקבע'},
+    '3 · נרשם (דמי הרשמה 300)':{payReg:true}
+  },
+  'אח"ד': {
+    '1 · נרשם (תשלום מלא)':   {payReg:true}
   }
 };
 

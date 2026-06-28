@@ -34,6 +34,7 @@ function apiBoard(){
     regAnchors: PROGRAM_REG_ANCHOR,
     funnels: funnels,
     stageRequires: STAGE_REQUIRES,
+    stageApply: STAGE_APPLY,
     stages: DIALOGI_FUNNEL.map(function(f){return f.stage;}),   // ברירת-מחדל (תאימות)
     schema: SCHEMA,
     templates: readTemplates_()
@@ -57,6 +58,8 @@ function apiUpdate(patch){
   var target = null;
   for (var i=0;i<rows.length;i++){ if (rows[i].id === patch.id){ target = rows[i]; break; } }
   if (!target) throw new Error('פנייה לא נמצאה: ' + patch.id);
+  computeRow_(target);
+  var oldEff = effectiveStage_(target);   // השלב לפני העדכון — לזיהוי תזוזה
   Object.keys(patch).forEach(function(k){
     if (k === 'id') return;
     var c = schemaByKey()[k];
@@ -70,6 +73,9 @@ function apiUpdate(patch){
   });
   if (changedFacts) target.boardStage = '';
   target.updatedAt = todayStr_();
+  computeRow_(target);
+  // אם השלב האפקטיבי השתנה (גרירה / סימון / שינוי-שלב) — מאפסים את מונה ההתיישנות.
+  if (patch.stageSince === undefined && effectiveStage_(target) !== oldEff) target.stageSince = todayStr_();
   writeRow_(sh, target._row, target);
   computeRow_(target);
   target.reminder = needsReminder_(target);
@@ -92,6 +98,7 @@ function apiCreate(rec){
   rec.source = 'app';
   rec.inquiryDate = todayStr_();
   rec.updatedAt = todayStr_();
+  rec.stageSince = todayStr_();
   if (!rec.status) rec.status = 'פנייה חדשה';
   computeRow_(rec);
   sh.appendRow(lineForSheet_(sh, rec));   // לפי סדר העמודות בגיליון (מונע אי-התאמה)

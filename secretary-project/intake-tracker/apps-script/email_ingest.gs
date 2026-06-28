@@ -72,6 +72,7 @@ function doIngest_(includeProcessed){
           program: prog,                     // מזוהה מכותרת המייל (ריק אם לא זוהה → לשיוך ע"י טל)
           cycle: rec.cycle || '',
           inquiryDate: origDate,
+          stageSince: origDate,
           channel: 'אתר',
           crmCode: rec.crmCode || '',
           name: rec.name || '',

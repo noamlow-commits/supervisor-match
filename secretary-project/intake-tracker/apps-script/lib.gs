@@ -130,6 +130,13 @@ function computeRow_(o){
   return o;
 }
 
+// השלב האפקטיבי בלוח: מיקום ידני (boardStage) אם תקף למשפך, אחרת המחושב. לזיהוי תזוזת-שלב.
+function effectiveStage_(o){
+  var bs = o.boardStage;
+  if (bs){ var f = funnelFor_(o.program); for (var i = 0; i < f.length; i++){ if (f[i].stage === bs) return bs; } }
+  return o.stage;
+}
+
 // האם שולם עוגן-ההרשמה של התוכנית (מקדמה / דמי הרשמה / תשלום מלא).
 function regAnchorPaid_(o){
   var a = PROGRAM_REG_ANCHOR[canonicalProgram_(o.program)] || 'payReg';
