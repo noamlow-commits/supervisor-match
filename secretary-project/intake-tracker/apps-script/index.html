@@ -34,6 +34,8 @@
   .col.drop-hover{outline:2px dashed var(--teal);outline-offset:-2px;background:#f0faf9}
   .card.age1{outline:2px solid #e8a33d;outline-offset:-1px}
   .card.age2{outline:2px solid #d64545;outline-offset:-1px}
+  .card.hit{outline:3px solid var(--teal);outline-offset:-1px;animation:hitflash 1s ease-out 2}
+  @keyframes hitflash{0%{background:#d7f0ee}100%{background:#fff}}
   .ic-btn{cursor:pointer;font-size:13px;opacity:.7;text-decoration:none}
   .ic-btn:hover{opacity:1}
   .card.rem{background:var(--warn-bg)}
@@ -115,7 +117,7 @@
   <label><input type="checkbox" id="remOnly" onchange="render()"> רק שצריך תזכורת</label>
   <label><input type="checkbox" id="payOnly" onchange="render()"> ממתין לתשלום</label>
   <span class="legend" id="legend"></span>
-  <input id="search" placeholder="חיפוש שם/טלפון…" oninput="render()" style="margin-right:auto;width:170px">
+  <input id="search" placeholder="🔍 חיפוש שם/טלפון — מדגיש וקופץ" oninput="render()" style="margin-right:auto;width:210px">
 </div>
 
 <div id="view-board"><div class="board" id="board"><div class="spin">טוען…</div></div></div>
@@ -272,18 +274,20 @@ function render(){
   var remOnly = document.getElementById('remOnly').checked;
   var payOnly = document.getElementById('payOnly').checked;
   var q = document.getElementById('search').value.trim();
+  var effProg = q ? '' : prog;   // בחיפוש — סורקים את כל התוכניות (מדגיש, לא מסנן)
   var rows = DATA.rows.filter(function(r){
     if (r.recordType!=='פנייה') return false;   // אנשי קשר / קורסים — בלשוניות נפרדות
-    if (prog && canonProg(r.program)!==prog) return false;
+    if (effProg && canonProg(r.program)!==effProg) return false;
     if (remOnly && !r.reminder) return false;
     if (payOnly && !awaitingPayment(r)) return false;
-    if (q && (String(r.name).indexOf(q)<0 && String(r.phone).indexOf(q)<0)) return false;
     return true;
   });
+  function isHit(r){ return q && (String(r.name).indexOf(q)>=0 || String(r.phone).indexOf(q)>=0); }
+  var firstHit = null;
   var board = document.getElementById('board');
   var keepScroll = board.scrollLeft;   // שמירת מיקום גלילה אופקי (לא לאבד מקום)
   board.innerHTML = '';
-  columnsFor(prog, rows).forEach(function(stage){
+  columnsFor(effProg, rows).forEach(function(stage){
     var inStage = rows.filter(function(r){ return effStage(r)===stage; });
     inStage.sort(function(a,b){ return agingDays(b)-agingDays(a); });   // התקועות (מאוחרות) למעלה
     var col = document.createElement('div'); col.className='col';
@@ -296,7 +300,9 @@ function render(){
     inStage.forEach(function(r){
       var c = document.createElement('div');
       var ageC = agingClass(r);
-      c.className = 'card' + (r.reminder?' rem':'') + (ageC?(' '+ageC):'');
+      var hit = isHit(r);
+      c.className = 'card' + (r.reminder?' rem':'') + (ageC?(' '+ageC):'') + (hit?' hit':'');
+      if (hit && !firstHit) firstHit = c;
       c.style.borderLeftColor = progColor(r.program||'');
       c.draggable = true;
       c.addEventListener('dragstart', function(ev){ DRAG_ID = r.id; c.classList.add('dragging'); if(ev.dataTransfer) ev.dataTransfer.effectAllowed='move'; });
@@ -319,7 +325,8 @@ function render(){
     if (!inStage.length){ var e=document.createElement('div'); e.className='empty'; e.style.cssText='padding:14px;font-size:12px'; e.textContent='—'; cards.appendChild(e); }
     col.appendChild(cards); board.appendChild(col);
   });
-  board.scrollLeft = keepScroll;
+  if (firstHit) setTimeout(function(){ firstHit.scrollIntoView({behavior:'smooth', block:'center', inline:'center'}); }, 20);
+  else board.scrollLeft = keepScroll;
 }
 
 // מעבר לשלב (גרירה / שינוי בכרטיס): אזהרת-מעבר אם חסרות אבני-דרך, ואז סימון אבן-הדרך
