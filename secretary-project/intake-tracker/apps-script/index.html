@@ -217,10 +217,15 @@ function columnsFor(prog, rows){
   return out;
 }
 
-// שלב אפקטיבי בלוח = מיקום ידני (גרירה) אם תקף למשפך התוכנית, אחרת השלב המחושב.
+// המשפך של כל כרטיס — לפי התוכנית, או הגנרי לתוכנית לא-מזוהה (כדי שכל כרטיס יקבל משפך).
+function cardFunnel(program){
+  var p = canonProg(program);
+  return (DATA.funnels && DATA.funnels[p]) || DATA.genericFunnel || [];
+}
+// שלב אפקטיבי בלוח = מיקום ידני (גרירה) אם תקף למשפך הכרטיס, אחרת השלב המחושב.
 function effStage(r){
-  var f = DATA.funnels && DATA.funnels[canonProg(r.program)];
-  if (r.boardStage && f && f.indexOf(r.boardStage) >= 0) return r.boardStage;
+  var f = cardFunnel(r.program);
+  if (r.boardStage && f.indexOf(r.boardStage) >= 0) return r.boardStage;
   return r.stage;
 }
 function truthy_(v){
@@ -333,27 +338,34 @@ function render(){
 // מעבר לשלב (גרירה / שינוי בכרטיס): אזהרת-מעבר אם חסרות אבני-דרך, ואז סימון אבן-הדרך
 // של השלב (אם מוגדרת) — כך הגרירה מעדכנת את הנתונים בפועל. מחזיר true אם ממשיכים.
 function applyStageMove(r, stage){
-  // הסברים במקום כשל-שקט: אי-אפשר להזיז לשלב שלא שייך למשפך של הכרטיס.
+  // (1) אין תוכנית → אי-אפשר לשבץ בשלב.
   if (!String(r.program||'').trim()){
     alert('לפנייה של "'+(r.name||'')+'" אין עדיין תוכנית, אז אי-אפשר לשבץ אותה בשלב.\nפתח/י את הכרטיס, בחר/י תוכנית, ואז אפשר להזיז בין השלבים.');
     return false;
   }
   var prog = canonProg(r.program);
+  // (2) סגירה — דרך הסטטוס, לא דרך גרירה.
   if (String(stage).indexOf('✗')>=0){
     alert('לסגירת פנייה — פתח/י את הכרטיס ועדכן/י את "סטטוס" (נדחה / לא מעוניין).');
     return false;
   }
-  var f = DATA.funnels && DATA.funnels[prog];
-  if (f && f.indexOf(stage)<0){
-    alert('השלב "'+stage+'" אינו שייך למשפך של תוכנית "'+prog+'".\nאפשר להזיז את "'+(r.name||'')+'" רק בין שלבי המשפך של '+prog+' (כדאי לסנן לפי התוכנית בסרגל למעלה).');
+  // (3) השלב חייב להיות במשפך של הכרטיס (כולל תוכנית לא-מזוהה → משפך גנרי).
+  var f = cardFunnel(r.program);
+  if (f.length && f.indexOf(stage) < 0){
+    alert('השלב "'+stage+'" אינו שייך למשפך של "'+(r.name||'')+'".\nאפשר להזיז אותה רק בין שלבי המשפך שלה (כדאי לסנן לפי התוכנית בסרגל למעלה).');
     return false;
   }
-  var reqs = (DATA.stageRequires && DATA.stageRequires[prog] && DATA.stageRequires[prog][stage]) || [];
-  var missing = reqs.filter(function(qq){ return !truthy_(r[qq.key]); });
-  if (missing.length){
-    if (!confirm('לפני "'+stage+'" כדאי לוודא:\n• '+missing.map(function(m){return m.label;}).join('\n• ')+'\n\nלהמשיך בכל זאת?')) return false;
+  var curIdx = f.indexOf(effStage(r)), tgtIdx = f.indexOf(stage);
+  // (4) אזהרת-שער רכה — רק במעבר קדימה (אבני-דרך מומלצות), ניתנת לדילוג.
+  if (tgtIdx > curIdx){
+    var reqs = (DATA.stageRequires && DATA.stageRequires[prog] && DATA.stageRequires[prog][stage]) || [];
+    var missing = reqs.filter(function(qq){ return !truthy_(r[qq.key]); });
+    if (missing.length){
+      if (!confirm('לפני "'+stage+'" כדאי לוודא:\n• '+missing.map(function(m){return m.label;}).join('\n• ')+'\n\nלהמשיך בכל זאת?')) return false;
+    }
   }
-  var apply = (DATA.stageApply && DATA.stageApply[prog] && DATA.stageApply[prog][stage]);
+  // (5) קדימה → מסמן אבן-דרך (מעדכן נתונים); אחורה / ללא-מיפוי → מיקום ידני (תמיד זז).
+  var apply = (tgtIdx > curIdx) && DATA.stageApply && DATA.stageApply[prog] && DATA.stageApply[prog][stage];
   var patch = {id:r.id}, setMsg = '';
   if (apply){ for (var k in apply){ patch[k]=apply[k]; } setMsg = ' · סומן: '+stageApplyLabel(apply); }
   else { patch.boardStage = stage; }

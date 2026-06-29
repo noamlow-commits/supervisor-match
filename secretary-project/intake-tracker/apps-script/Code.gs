@@ -33,6 +33,7 @@ function apiBoard(){
     programColors: PROGRAM_COLORS,
     regAnchors: PROGRAM_REG_ANCHOR,
     funnels: funnels,
+    genericFunnel: GENERIC_FUNNEL.map(function(f){return f.stage;}),
     stageRequires: STAGE_REQUIRES,
     stageApply: STAGE_APPLY,
     stages: DIALOGI_FUNNEL.map(function(f){return f.stage;}),   // ברירת-מחדל (תאימות)
