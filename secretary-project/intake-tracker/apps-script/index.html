@@ -333,7 +333,21 @@ function render(){
 // מעבר לשלב (גרירה / שינוי בכרטיס): אזהרת-מעבר אם חסרות אבני-דרך, ואז סימון אבן-הדרך
 // של השלב (אם מוגדרת) — כך הגרירה מעדכנת את הנתונים בפועל. מחזיר true אם ממשיכים.
 function applyStageMove(r, stage){
+  // הסברים במקום כשל-שקט: אי-אפשר להזיז לשלב שלא שייך למשפך של הכרטיס.
+  if (!String(r.program||'').trim()){
+    alert('לפנייה של "'+(r.name||'')+'" אין עדיין תוכנית, אז אי-אפשר לשבץ אותה בשלב.\nפתח/י את הכרטיס, בחר/י תוכנית, ואז אפשר להזיז בין השלבים.');
+    return false;
+  }
   var prog = canonProg(r.program);
+  if (String(stage).indexOf('✗')>=0){
+    alert('לסגירת פנייה — פתח/י את הכרטיס ועדכן/י את "סטטוס" (נדחה / לא מעוניין).');
+    return false;
+  }
+  var f = DATA.funnels && DATA.funnels[prog];
+  if (f && f.indexOf(stage)<0){
+    alert('השלב "'+stage+'" אינו שייך למשפך של תוכנית "'+prog+'".\nאפשר להזיז את "'+(r.name||'')+'" רק בין שלבי המשפך של '+prog+' (כדאי לסנן לפי התוכנית בסרגל למעלה).');
+    return false;
+  }
   var reqs = (DATA.stageRequires && DATA.stageRequires[prog] && DATA.stageRequires[prog][stage]) || [];
   var missing = reqs.filter(function(qq){ return !truthy_(r[qq.key]); });
   if (missing.length){
