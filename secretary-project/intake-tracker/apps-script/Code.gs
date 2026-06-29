@@ -85,9 +85,11 @@ function apiUpdate(patch){
 
 /** יצירת פנייה חדשה ידנית מהאפליקציה. */
 function apiCreate(rec){
-  // ולידציה בסיסית — האפליקציה היא מקור-האמת, לא יוצרים רשומות ריקות.
-  if (!String(rec.name||'').trim() && !String(rec.phone||'').trim())
-    throw new Error('נדרש לפחות שם או טלפון');
+  // ולידציה — יצירה ידנית מחייבת שם ותוכנית (כדי שפנייה לא "תיאבד" ללא שיוך).
+  // (קליטת Amax מוסיפה שורות ישירות, לא דרך apiCreate, אז לידים ממתינים-לשיוך אינם נחסמים.)
+  if (!String(rec.name||'').trim()) throw new Error('נדרש שם');
+  if (String(rec.recordType||'פנייה') === 'פנייה' && !String(rec.program||'').trim())
+    throw new Error('יש לבחור תוכנית');
   ensureColumns_();
   var sh = inquiriesSheet_();
   // דה-דופ: אם כבר קיימת פנייה עם אותו מפתח-זהות (תוכנית+קוד/טלפון/שם) — לא ליצור כפיל.

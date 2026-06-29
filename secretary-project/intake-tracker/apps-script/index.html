@@ -314,12 +314,13 @@ function render(){
       var gate = r.gateWarn ? '<span class="pill gate" title="'+esc(r.gateWarn)+'">⚠ חסר לריאיון</span>' : '';
       var aged = agingDays(r);
       var ageTag = ageC ? '<span class="pill" style="background:'+(ageC==='age2'?'#fde2e2;color:#9b2c2c':'#fff0e0;color:#9a5800')+'">🕓 '+aged+' ימ\' בשלב</span>' : '';
+      var noProgTag = !String(r.program||'').trim() ? '<span class="pill" style="background:#fde2e2;color:#9b2c2c">⚠ ללא תוכנית</span>' : '';
       var contact = r.phone ? ' · '+esc(r.phone)+
         ' <a class="ic-btn" href="'+waLink(r.phone)+'" target="_blank" onclick="event.stopPropagation()" title="וואטסאפ">💬</a>'+
         ' <span class="ic-btn" onclick="event.stopPropagation();copyPhone(\''+esc(r.phone)+'\')" title="העתק טלפון">📋</span>' : '';
       c.innerHTML = '<div class="nm">'+esc(r.name||'(ללא שם)')+'</div>'+
         '<div class="meta"><span class="dot" style="background:'+progColor(r.program||'')+'"></span>'+esc(canonProg(r.program)||'')+contact+'</div>'+
-        '<span class="pill'+(r.reminder?' rem':'')+'">'+esc(r.nextAction||'')+'</span>'+payPill+gate+ageTag;
+        '<span class="pill'+(r.reminder?' rem':'')+'">'+esc(r.nextAction||'')+'</span>'+payPill+gate+ageTag+noProgTag;
       cards.appendChild(c);
     });
     if (!inStage.length){ var e=document.createElement('div'); e.className='empty'; e.style.cssText='padding:14px;font-size:12px'; e.textContent='—'; cards.appendChild(e); }
@@ -494,6 +495,14 @@ function collect(isNew){
 
 function save(id, isNew){
   var patch = collect(isNew);
+  if (isNew){
+    if (!String(patch.name||'').trim()){ toast('יש להזין שם'); return; }
+    if ((patch.recordType||'פנייה')==='פנייה' && !String(patch.program||'').trim()){ toast('יש לבחור תוכנית'); return; }
+    // תזכורת רכה (לא חוסמת): לעיתים פונים ממיכל ללא כל הפרטים.
+    if (!String(patch.phone||'').trim() && !String(patch.email||'').trim()){
+      if (!confirm('לא הוזן טלפון או מייל — לשמור בכל זאת?')) return;
+    }
+  }
   toast('שומר…');
   if (isNew){
     google.script.run.withSuccessHandler(function(s){ closeOv(); toast('נוצרה פנייה'); patchLocal(s); }).withFailureHandler(err).apiCreate(patch);
