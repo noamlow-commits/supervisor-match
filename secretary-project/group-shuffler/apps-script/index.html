@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="utf-8">
+<base target="_top">
+<style>
+  :root{ --bg:#f4f6f8; --panel:#fff; --ink:#1f2d3a; --muted:#6b7b8a; --line:#e2e8ee; --teal:#2c7a7b; --teal-d:#225e5f; --slate:#1f3a4d; }
+  *{box-sizing:border-box}
+  body{margin:0;font-family:"Segoe UI",Arial,sans-serif;background:var(--bg);color:var(--ink);font-size:14px}
+  header{background:var(--slate);color:#fff;padding:14px 20px;font-size:18px;font-weight:600}
+  .wrap{max-width:920px;margin:0 auto;padding:16px}
+  .panel{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:16px;margin-bottom:16px}
+  .panel h2{margin:0 0 12px;font-size:16px}
+  .panel h2 .n{color:var(--muted);font-weight:400;font-size:14px}
+  textarea{width:100%;min-height:140px;border:1px solid var(--line);border-radius:8px;padding:10px;font:inherit;resize:vertical}
+  .btn{background:var(--teal);color:#fff;border:none;border-radius:8px;padding:9px 16px;cursor:pointer;font-size:14px;font-weight:600}
+  .btn:hover{background:var(--teal-d)}
+  .btn.ghost{background:#eef3f6;color:var(--slate)}
+  .btn.ghost:hover{background:#e2ebef}
+  .row{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:10px}
+  .seg{display:inline-flex;border:1px solid var(--line);border-radius:8px;overflow:hidden}
+  .seg button{background:#fff;border:none;padding:8px 16px;cursor:pointer;font:inherit}
+  .seg button.on{background:var(--teal);color:#fff}
+  .groups{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:12px;margin-top:14px}
+  .grp{border:1px solid var(--line);border-radius:10px;overflow:hidden}
+  .grp h4{margin:0;padding:8px 11px;background:var(--teal);color:#fff;font-size:13px}
+  .grp ul{margin:0;padding:8px 11px;list-style:none}
+  .grp li{padding:4px 0;border-bottom:1px solid #f0f4f6}
+  .grp li:last-child{border:none}
+  .hist-item{border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin-bottom:10px}
+  .hist-item .top{display:flex;align-items:center;gap:10px;color:var(--muted);font-size:13px}
+  .hist-groups{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px}
+  .chip{background:#eef3f6;border-radius:8px;padding:5px 9px;font-size:12.5px}
+  .del{margin-right:auto;background:#fff0f0;color:#c0392b;border:1px solid #f0b8b8;border-radius:7px;padding:5px 10px;cursor:pointer;font-size:12px}
+  .empty{color:var(--muted);text-align:center;padding:24px}
+  #toast{position:fixed;bottom:18px;left:50%;transform:translateX(-50%);background:var(--slate);color:#fff;padding:9px 16px;border-radius:8px;display:none}
+  .spin{color:var(--muted);padding:20px;text-align:center}
+</style>
+</head>
+<body>
+<header>שיבוץ תלמידות לקבוצות</header>
+<div class="wrap" id="wrap"><div class="spin">טוען…</div></div>
+<div id="toast"></div>
+
+<script>
+var DATA = {students:[], rounds:[]};
+var SIZE = 2;
+var GROUPS = null;   // תוצאת השיבוץ הנוכחי (לפני שמירה)
+
+function load(){
+  google.script.run.withSuccessHandler(function(s){ DATA = JSON.parse(s); renderAll(); }).withFailureHandler(err).apiData();
+}
+
+function renderAll(){
+  var w = document.getElementById('wrap');
+  w.innerHTML =
+    panelStudents() + panelGenerate() + panelHistory();
+  document.getElementById('students').value = DATA.students.join('\n');
+  renderGroups();
+}
+
+function panelStudents(){
+  return '<div class="panel"><h2>תלמידות <span class="n">(' + DATA.students.length + ')</span></h2>'+
+    '<div style="color:var(--muted);font-size:12.5px;margin-bottom:6px">שם אחד בכל שורה.</div>'+
+    '<textarea id="students" placeholder="לאה כהן&#10;רבקה לוי&#10;..."></textarea>'+
+    '<div class="row"><button class="btn" onclick="saveStudents()">💾 שמירת רשימה</button></div></div>';
+}
+function panelGenerate(){
+  return '<div class="panel"><h2>שיבוץ חדש</h2>'+
+    '<div class="row"><span>גודל קבוצה:</span>'+
+      '<span class="seg"><button id="sz2" class="'+(SIZE===2?'on':'')+'" onclick="setSize(2)">זוגות (2)</button>'+
+      '<button id="sz4" class="'+(SIZE===4?'on':'')+'" onclick="setSize(4)">רביעיות (4)</button></span>'+
+      '<button class="btn" onclick="generate()">🎲 שבץ</button>'+
+      '<button class="btn ghost" onclick="generate()" id="reshuffle" style="display:none">🔀 ערבב שוב</button>'+
+      '<button class="btn" onclick="saveRound()" id="saveRound" style="display:none">✔ שמור סבב</button>'+
+    '</div><div class="groups" id="groups"></div></div>';
+}
+function panelHistory(){
+  var h = '<div class="panel"><h2>היסטוריית סבבים <span class="n">(' + DATA.rounds.length + ')</span></h2>';
+  if (!DATA.rounds.length) return h + '<div class="empty">עדיין אין סבבים שמורים</div></div>';
+  h += DATA.rounds.slice().reverse().map(function(rd){
+    var chips = (rd.groups||[]).map(function(g){ return '<span class="chip">'+g.map(esc).join(' · ')+'</span>'; }).join('');
+    return '<div class="hist-item"><div class="top"><b>'+esc(rd.date)+'</b> · '+(rd.size===4?'רביעיות':'זוגות')+' · '+(rd.groups||[]).length+' קבוצות'+
+      '<button class="del" onclick="delRound(\''+rd.roundId+'\')">🗑 מחק</button></div>'+
+      '<div class="hist-groups">'+chips+'</div></div>';
+  }).join('');
+  return h + '</div>';
+}
+
+function renderGroups(){
+  var el = document.getElementById('groups'); if(!el) return;
+  document.getElementById('reshuffle').style.display = GROUPS ? '' : 'none';
+  document.getElementById('saveRound').style.display = GROUPS ? '' : 'none';
+  if (!GROUPS){ el.innerHTML=''; return; }
+  el.innerHTML = GROUPS.map(function(g,i){
+    return '<div class="grp"><h4>קבוצה '+(i+1)+' <span style="opacity:.8">('+g.length+')</span></h4><ul>'+
+      g.map(function(n){ return '<li>'+esc(n)+'</li>'; }).join('')+'</ul></div>';
+  }).join('');
+}
+
+function setSize(s){ SIZE=s; document.getElementById('sz2').className=(s===2?'on':''); document.getElementById('sz4').className=(s===4?'on':''); }
+function saveStudents(){
+  var names = document.getElementById('students').value.split(/\n/);
+  toast('שומר…');
+  google.script.run.withSuccessHandler(function(s){ DATA.students=JSON.parse(s).students; toast('נשמרו '+DATA.students.length+' תלמידות'); renderAll(); }).withFailureHandler(err).apiSaveStudents(JSON.stringify(names));
+}
+function generate(){
+  if (!DATA.students.length){ toast('אין תלמידות ברשימה'); return; }
+  toast('משבץ…');
+  google.script.run.withSuccessHandler(function(s){ GROUPS=JSON.parse(s).groups; toast('שובץ!'); renderGroups(); }).withFailureHandler(err).apiGenerate(SIZE);
+}
+function saveRound(){
+  if (!GROUPS){ return; }
+  toast('שומר סבב…');
+  google.script.run.withSuccessHandler(function(s){ DATA.rounds=JSON.parse(s).rounds; GROUPS=null; toast('הסבב נשמר'); renderAll(); }).withFailureHandler(err).apiSaveRound(SIZE, JSON.stringify(GROUPS));
+}
+function delRound(id){
+  if(!confirm('למחוק את הסבב?')) return;
+  google.script.run.withSuccessHandler(function(s){ DATA.rounds=JSON.parse(s).rounds; toast('נמחק'); renderAll(); }).withFailureHandler(err).apiDeleteRound(id);
+}
+
+function toast(m){ var t=document.getElementById('toast'); t.textContent=m; t.style.display='block'; clearTimeout(t._t); t._t=setTimeout(function(){t.style.display='none';},2400); }
+function err(e){ toast('שגיאה: '+(e.message||e)); }
+function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];}); }
+load();
+</script>
+</body>
+</html>
