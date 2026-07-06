@@ -120,7 +120,20 @@ var STAGE_REQUIRES = {
     '6 · נרשם (מקדמה 1200)': [{key:'payDeposit', label:'מקדמה (1200)'}]
   },
   'תעודה': {
-    '3 · נרשם (דמי הרשמה 300)': [{key:'payReg', label:'דמי הרשמה (300)'}]
+    '3 · תשלום והרשמה (300)': [{key:'payReg', label:'דמי הרשמה (300)'}]
+  }
+};
+
+// צמצום הכרטיס לפי תוכנית (בקשת טל: כרטיס תעודה קליל — לא צריך את כל השדות של הדיאלוגי).
+// groups = קבוצות שלמות להסתרה בטופס · keys = שדות בודדים להסתרה.
+// שדה מוסתר פשוט אינו נרנדר ואינו נאסף — אינו נמחק (הערך הקיים נשמר).
+var PROGRAM_CARD_HIDE = {
+  'תעודה': {
+    groups: ['סף קבלה', 'מסמכים', 'התלבטות', 'מחושב'],
+    keys: ['regForm', 'certDocs', 'recommend', 'missingForms', 'resultLetter',
+           'needsMoodle', 'payInterview',
+           'payDeposit', 'payDepositSum', 'payDepositDate',
+           'payTuition', 'payTuitionSum', 'discountForm', 'discountPct']
   }
 };
 
@@ -136,7 +149,7 @@ var STAGE_APPLY = {
   'תעודה': {
     '1 · שיחה והתאמה':        {spoke:true},
     '2 · ריאיון (הרב רונן)':  {interview:'נקבע'},
-    '3 · נרשם (דמי הרשמה 300)':{payReg:true}
+    '3 · תשלום והרשמה (300)': {payReg:true}
   },
   'אח"ד': {
     '1 · נרשם (תשלום מלא)':   {payReg:true}
@@ -229,7 +242,7 @@ var TEUDA_FUNNEL = [
   {stage:'0 · פנייה ראשונית',        next:'התאמה לתוכנית + שיחה',             reached:function(o){ return true; }},
   {stage:'1 · שיחה והתאמה',          next:'להפנות לריאיון עם הרב רונן',       reached:function(o){ return o.materialSent || o.spoke; }},
   {stage:'2 · ריאיון (הרב רונן)',    next:'לגבות דמי הרשמה (300)',            reached:function(o){ return o.interviewDate || o.interview==='נקבע' || o.interview==='בוצע' || o.interview==='התקבל'; }},
-  {stage:'3 · נרשם (דמי הרשמה 300)', next:'לוודא שהכסף הגיע',                 reached:function(o){ return o.payReg; }}
+  {stage:'3 · תשלום והרשמה (300)',   next:'לוודא שהכסף הגיע',                 reached:function(o){ return o.payReg; }}
 ];
 var AHAD_FUNNEL = [
   {stage:'0 · פנייה חדשה',       next:'לגבות תשלום מלא',                  reached:function(o){ return true; }},

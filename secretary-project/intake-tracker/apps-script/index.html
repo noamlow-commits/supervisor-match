@@ -364,11 +364,12 @@ function applyStageMove(r, stage){
       if (!confirm('לפני "'+stage+'" כדאי לוודא:\n• '+missing.map(function(m){return m.label;}).join('\n• ')+'\n\nלהמשיך בכל זאת?')) return false;
     }
   }
-  // (5) קדימה → מסמן אבן-דרך (מעדכן נתונים); אחורה / ללא-מיפוי → מיקום ידני (תמיד זז).
+  // (5) תמיד נועלים את המיקום ליעד (boardStage=stage) כדי שהכרטיס יישאר בעמודה שאליה נגרר —
+  //     גם אם אבן-הדרך לבדה גוזרת שלב נמוך יותר (מונע "קפיצה חזרה"). במעבר קדימה גם מסמנים
+  //     את אבן-הדרך של השלב (אם מוגדרת) כדי שהגרירה תעדכן נתונים, לא רק מיקום.
   var apply = (tgtIdx > curIdx) && DATA.stageApply && DATA.stageApply[prog] && DATA.stageApply[prog][stage];
-  var patch = {id:r.id}, setMsg = '';
+  var patch = {id:r.id, boardStage:stage}, setMsg = '';
   if (apply){ for (var k in apply){ patch[k]=apply[k]; } setMsg = ' · סומן: '+stageApplyLabel(apply); }
-  else { patch.boardStage = stage; }
   toast('מעדכן…');
   google.script.run.withSuccessHandler(function(s){ patchLocal(s); toast('הועבר ל'+stage+setMsg); }).withFailureHandler(err).apiUpdate(patch);
   return true;
@@ -404,9 +405,14 @@ function openEdit(id){ buildModal(rowById(id), false); }
 function openNew(){ buildModal({status:'פנייה חדשה'}, true); }
 
 function buildModal(rec, isNew){
+  // צמצום הכרטיס לפי תוכנית (למשל תעודה — כרטיס קליל). שדה/קבוצה מוסתרים אינם נרנדרים
+  // ואינם נאספים ב-collect(), כך שערכם הקיים נשמר ואינו נמחק.
+  var hide = (DATA.programCardHide && DATA.programCardHide[canonProg(rec.program)]) || {groups:[], keys:[]};
+  var hideG = hide.groups || [], hideK = hide.keys || [];
   var groups = {};
   DATA.schema.forEach(function(c){
     if (c.key==='id'||c.group==='מטא'||(c.computed&&isNew)) return;
+    if (hideG.indexOf(c.group)>=0 || hideK.indexOf(c.key)>=0) return;
     (groups[c.group]=groups[c.group]||[]).push(c);
   });
   var html = '<div class="mh"><h2>'+(isNew?'פנייה חדשה':esc(rec.name||'פנייה'))+'</h2>'+

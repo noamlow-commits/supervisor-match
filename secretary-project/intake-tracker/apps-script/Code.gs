@@ -36,6 +36,7 @@ function apiBoard(){
     genericFunnel: GENERIC_FUNNEL.map(function(f){return f.stage;}),
     stageRequires: STAGE_REQUIRES,
     stageApply: STAGE_APPLY,
+    programCardHide: PROGRAM_CARD_HIDE,
     stages: DIALOGI_FUNNEL.map(function(f){return f.stage;}),   // ברירת-מחדל (תאימות)
     schema: SCHEMA,
     templates: readTemplates_()
@@ -67,12 +68,17 @@ function apiUpdate(patch){
     if (!c || c.computed) return;
     target[k] = patch[k];
   });
-  // אם שונתה עובדה כלשהי (לא רק מיקום-לוח ידני) — מבטלים את הצמדת המיקום הידני,
-  // כדי שסימון אבן-דרך תמיד יזיז את הכרטיס לפי המשפך המחושב (תיקון "לא מגיב").
+  // מתי מנקים את המיקום-הידני (boardStage)?
+  //  • סימון עובדת-משפך אמיתית בכרטיס (בלי boardStage מפורש) → מנקים, כדי שהשלב המחושב
+  //    יחזור לשלוט (תיקון "לא מגיב" — סימון וי מזיז את הכרטיס).
+  //  • גרירה: הלקוח שולח boardStage מפורש *יחד* עם אבן-הדרך → לא מנקים, כדי שהכרטיס
+  //    יישאר בעמודה שאליה נגרר גם אם אבן-הדרך לבדה גוזרת שלב נמוך יותר (תיקון "קופץ חזרה").
+  //  • שדות-הרחבה (aug: stageSince/snooze/הערות/התלבטות) אינם עובדות-משפך → אינם מנקים.
   var changedFacts = Object.keys(patch).some(function(k){
-    return k !== 'id' && k !== 'boardStage' && schemaByKey()[k] && !schemaByKey()[k].computed;
+    var c = schemaByKey()[k];
+    return k !== 'id' && k !== 'boardStage' && c && !c.computed && !c.aug;
   });
-  if (changedFacts) target.boardStage = '';
+  if (changedFacts && patch.boardStage === undefined) target.boardStage = '';
   target.updatedAt = todayStr_();
   computeRow_(target);
   // אם השלב האפקטיבי השתנה (גרירה / סימון / שינוי-שלב) — מאפסים את מונה ההתיישנות.
