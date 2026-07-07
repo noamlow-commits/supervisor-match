@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <base target="_top">
 <style>
-  :root{ --bg:#f4f6f8; --panel:#fff; --ink:#1f2d3a; --muted:#6b7b8a; --line:#e2e8ee; --teal:#2c7a7b; --teal-d:#225e5f; --slate:#1f3a4d; }
+  :root{ --bg:#f4f6f8; --panel:#fff; --ink:#1f2d3a; --muted:#6b7b8a; --line:#e2e8ee; --teal:#2c7a7b; --teal-d:#225e5f; --slate:#1f3a4d; --gold:#b7791f; --gold-bg:#fdf6e7; --warn-bg:#fff3df; --warn:#9a6b00; }
   *{box-sizing:border-box}
   body{margin:0;font-family:"Segoe UI",Arial,sans-serif;background:var(--bg);color:var(--ink);font-size:14px}
   header{background:var(--slate);color:#fff;padding:14px 20px;font-size:18px;font-weight:600}
@@ -12,25 +12,29 @@
   .panel{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:16px;margin-bottom:16px}
   .panel h2{margin:0 0 12px;font-size:16px}
   .panel h2 .n{color:var(--muted);font-weight:400;font-size:14px}
-  textarea{width:100%;min-height:140px;border:1px solid var(--line);border-radius:8px;padding:10px;font:inherit;resize:vertical}
+  textarea{width:100%;min-height:130px;border:1px solid var(--line);border-radius:8px;padding:10px;font:inherit;resize:vertical}
   .btn{background:var(--teal);color:#fff;border:none;border-radius:8px;padding:9px 16px;cursor:pointer;font-size:14px;font-weight:600}
   .btn:hover{background:var(--teal-d)}
   .btn.ghost{background:#eef3f6;color:var(--slate)}
   .btn.ghost:hover{background:#e2ebef}
   .row{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:10px}
-  .seg{display:inline-flex;border:1px solid var(--line);border-radius:8px;overflow:hidden}
-  .seg button{background:#fff;border:none;padding:8px 16px;cursor:pointer;font:inherit}
-  .seg button.on{background:var(--teal);color:#fff}
+  .status{border-radius:9px;padding:10px 13px;font-size:13.5px;margin-bottom:4px}
+  .status.ok{background:#eaf5f0;color:#1e6f52;border:1px solid #bfe3d3}
+  .status.due{background:var(--warn-bg);color:var(--warn);border:1px solid #f0cd8a;font-weight:600}
+  .status.none{background:#eef3f6;color:var(--muted)}
   .groups{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:12px;margin-top:14px}
   .grp{border:1px solid var(--line);border-radius:10px;overflow:hidden}
   .grp h4{margin:0;padding:8px 11px;background:var(--teal);color:#fff;font-size:13px}
   .grp ul{margin:0;padding:8px 11px;list-style:none}
   .grp li{padding:4px 0;border-bottom:1px solid #f0f4f6}
   .grp li:last-child{border:none}
+  .grp.fixed{border-color:#e6cf9b}
+  .grp.fixed h4{background:var(--gold)}
   .hist-item{border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin-bottom:10px}
-  .hist-item .top{display:flex;align-items:center;gap:10px;color:var(--muted);font-size:13px}
+  .hist-item .top{display:flex;align-items:center;gap:10px;color:var(--muted);font-size:13px;flex-wrap:wrap}
   .hist-groups{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px}
   .chip{background:#eef3f6;border-radius:8px;padding:5px 9px;font-size:12.5px}
+  .chip.fixed{background:var(--gold-bg);border:1px solid #e6cf9b}
   .del{margin-right:auto;background:#fff0f0;color:#c0392b;border:1px solid #f0b8b8;border-radius:7px;padding:5px 10px;cursor:pointer;font-size:12px}
   .empty{color:var(--muted);text-align:center;padding:24px}
   #toast{position:fixed;bottom:18px;left:50%;transform:translateX(-50%);background:var(--slate);color:#fff;padding:9px 16px;border-radius:8px;display:none}
@@ -38,53 +42,56 @@
 </style>
 </head>
 <body>
-<header>שיבוץ תלמידות לקבוצות</header>
+<header>שיבוץ ללימוד בזוגות</header>
 <div class="wrap" id="wrap"><div class="spin">טוען…</div></div>
 <div id="toast"></div>
 
 <script>
-var DATA = {students:[], rounds:[]};
-var SIZE = 2;
-var GROUPS = null;   // תוצאת השיבוץ הנוכחי (לפני שמירה)
+var DATA = {students:[], fixed:[], rounds:[], rotationMonths:2};
+var GROUPS = null;   // תוצאת השיבוץ הנוכחי (זוגות, לפני שמירה)
 
 function load(){
   google.script.run.withSuccessHandler(function(s){ DATA = JSON.parse(s); renderAll(); }).withFailureHandler(err).apiData();
 }
 
 function renderAll(){
-  var w = document.getElementById('wrap');
-  w.innerHTML =
-    panelStudents() + panelGenerate() + panelHistory();
+  document.getElementById('wrap').innerHTML =
+    panelStudents() + panelFixed() + panelGenerate() + panelHistory();
   document.getElementById('students').value = DATA.students.join('\n');
+  document.getElementById('fixed').value = DATA.fixed.join('\n');
   renderGroups();
 }
 
 function panelStudents(){
-  return '<div class="panel"><h2>תלמידות <span class="n">(' + DATA.students.length + ')</span></h2>'+
-    '<div style="color:var(--muted);font-size:12.5px;margin-bottom:6px">שם אחד בכל שורה.</div>'+
+  return '<div class="panel"><h2>משתתפים לשיבוץ בזוגות <span class="n">(' + DATA.students.length + ')</span></h2>'+
+    '<div style="color:var(--muted);font-size:12.5px;margin-bottom:6px">שם אחד בכל שורה. אלה משובצים לזוגות ומתחלפים כל '+DATA.rotationMonths+' חודשים.</div>'+
     '<textarea id="students" placeholder="לאה כהן&#10;רבקה לוי&#10;..."></textarea>'+
     '<div class="row"><button class="btn" onclick="saveStudents()">💾 שמירת רשימה</button></div></div>';
 }
+function panelFixed(){
+  return '<div class="panel" style="border-color:#e6cf9b;background:var(--gold-bg)"><h2>הגברים — קבוצה קבועה <span class="n">(' + DATA.fixed.length + ')</span></h2>'+
+    '<div style="color:var(--muted);font-size:12.5px;margin-bottom:6px">שם אחד בכל שורה. קבוצה זו <b>אינה מתחלפת</b> — היא מוצגת כקבוצה אחת קבועה בכל סבב, ואינה נכנסת לשיבוץ הזוגות.</div>'+
+    '<textarea id="fixed" placeholder="שם&#10;שם&#10;..." style="background:#fff"></textarea>'+
+    '<div class="row"><button class="btn" style="background:var(--gold)" onclick="saveFixed()">💾 שמירת הקבוצה הקבועה</button></div></div>';
+}
 function panelGenerate(){
-  return '<div class="panel"><h2>שיבוץ חדש</h2>'+
-    '<div class="row"><span>גודל קבוצה:</span>'+
-      '<span class="seg"><button id="sz2" class="'+(SIZE===2?'on':'')+'" onclick="setSize(2)">זוגות (2)</button>'+
-      '<button id="sz4" class="'+(SIZE===4?'on':'')+'" onclick="setSize(4)">רביעיות (4)</button></span>'+
-      '<button class="btn" onclick="generate()">🎲 שבץ</button>'+
+  return '<div class="panel"><h2>סבב חדש</h2>'+ roundStatus() +
+    '<div class="row">'+
+      '<button class="btn" onclick="generate()">🎲 שבץ זוגות</button>'+
       '<button class="btn ghost" onclick="generate()" id="reshuffle" style="display:none">🔀 ערבב שוב</button>'+
       '<button class="btn" onclick="saveRound()" id="saveRound" style="display:none">✔ שמור סבב</button>'+
     '</div><div class="groups" id="groups"></div></div>';
 }
-function panelHistory(){
-  var h = '<div class="panel"><h2>היסטוריית סבבים <span class="n">(' + DATA.rounds.length + ')</span></h2>';
-  if (!DATA.rounds.length) return h + '<div class="empty">עדיין אין סבבים שמורים</div></div>';
-  h += DATA.rounds.slice().reverse().map(function(rd){
-    var chips = (rd.groups||[]).map(function(g){ return '<span class="chip">'+g.map(esc).join(' · ')+'</span>'; }).join('');
-    return '<div class="hist-item"><div class="top"><b>'+esc(rd.date)+'</b> · '+(rd.size===4?'רביעיות':'זוגות')+' · '+(rd.groups||[]).length+' קבוצות'+
-      '<button class="del" onclick="delRound(\''+rd.roundId+'\')">🗑 מחק</button></div>'+
-      '<div class="hist-groups">'+chips+'</div></div>';
-  }).join('');
-  return h + '</div>';
+
+// סטטוס הסבב הנוכחי: מתי התחיל, מתי מתחלף, כמה נשאר — או "הגיע הזמן להחליף".
+function roundStatus(){
+  if (!DATA.rounds.length) return '<div class="status none">עדיין לא נשמר סבב. שבצו זוגות ולחצו "שמור סבב" כדי להתחיל את הספירה.</div>';
+  var last = DATA.rounds[DATA.rounds.length-1];
+  var d = daysUntil(last.end);
+  if (d === null) return '';
+  if (d > 0) return '<div class="status ok">✔ הסבב הנוכחי התחיל ב-'+esc(fmt(last.start))+' · מתחלף ב-'+esc(fmt(last.end))+' <b>(בעוד '+d+' ימים)</b>.</div>';
+  if (d === 0) return '<div class="status due">🔁 היום מועד ההחלפה ('+esc(fmt(last.end))+') — כדאי לשבץ זוגות חדשים.</div>';
+  return '<div class="status due">🔁 הגיע הזמן להחליף! מועד ההחלפה ('+esc(fmt(last.end))+') חלף לפני '+(-d)+' ימים. שבצו זוגות חדשים.</div>';
 }
 
 function renderGroups(){
@@ -92,33 +99,71 @@ function renderGroups(){
   document.getElementById('reshuffle').style.display = GROUPS ? '' : 'none';
   document.getElementById('saveRound').style.display = GROUPS ? '' : 'none';
   if (!GROUPS){ el.innerHTML=''; return; }
-  el.innerHTML = GROUPS.map(function(g,i){
-    return '<div class="grp"><h4>קבוצה '+(i+1)+' <span style="opacity:.8">('+g.length+')</span></h4><ul>'+
+  var html = GROUPS.map(function(g,i){
+    return '<div class="grp"><h4>זוג '+(i+1)+(g.length>2?' (שלישייה)':'')+'</h4><ul>'+
       g.map(function(n){ return '<li>'+esc(n)+'</li>'; }).join('')+'</ul></div>';
   }).join('');
+  // הקבוצה הקבועה — מוצגת תמיד בסוף, בצבע נבדל.
+  if (DATA.fixed && DATA.fixed.length){
+    html += '<div class="grp fixed"><h4>קבוצה קבועה · הגברים</h4><ul>'+
+      DATA.fixed.map(function(n){ return '<li>'+esc(n)+'</li>'; }).join('')+'</ul></div>';
+  }
+  el.innerHTML = html;
 }
 
-function setSize(s){ SIZE=s; document.getElementById('sz2').className=(s===2?'on':''); document.getElementById('sz4').className=(s===4?'on':''); }
+function panelHistory(){
+  var h = '<div class="panel"><h2>היסטוריית סבבים <span class="n">(' + DATA.rounds.length + ')</span></h2>';
+  if (!DATA.rounds.length) return h + '<div class="empty">עדיין אין סבבים שמורים</div></div>';
+  h += DATA.rounds.slice().reverse().map(function(rd){
+    var chips = (rd.groups||[]).map(function(g){ return '<span class="chip">'+g.map(esc).join(' · ')+'</span>'; }).join('');
+    if (rd.fixed && rd.fixed.length) chips += '<span class="chip fixed">קבועה: '+rd.fixed.map(esc).join(' · ')+'</span>';
+    var dates = esc(fmt(rd.start)) + (rd.end ? ' – ' + esc(fmt(rd.end)) : '');
+    return '<div class="hist-item"><div class="top"><b>'+dates+'</b> · '+(rd.groups||[]).length+' זוגות'+
+      '<button class="del" onclick="delRound(\''+rd.roundId+'\')">🗑 מחק</button></div>'+
+      '<div class="hist-groups">'+chips+'</div></div>';
+  }).join('');
+  return h + '</div>';
+}
+
 function saveStudents(){
   var names = document.getElementById('students').value.split(/\n/);
   toast('שומר…');
-  google.script.run.withSuccessHandler(function(s){ DATA.students=JSON.parse(s).students; toast('נשמרו '+DATA.students.length+' תלמידות'); renderAll(); }).withFailureHandler(err).apiSaveStudents(JSON.stringify(names));
+  google.script.run.withSuccessHandler(function(s){ DATA.students=JSON.parse(s).students; toast('נשמרו '+DATA.students.length+' משתתפים'); renderAll(); }).withFailureHandler(err).apiSaveStudents(JSON.stringify(names));
+}
+function saveFixed(){
+  var names = document.getElementById('fixed').value.split(/\n/);
+  toast('שומר…');
+  google.script.run.withSuccessHandler(function(s){ DATA.fixed=JSON.parse(s).fixed; toast('נשמרה הקבוצה הקבועה ('+DATA.fixed.length+')'); renderAll(); }).withFailureHandler(err).apiSaveFixed(JSON.stringify(names));
 }
 function generate(){
-  if (!DATA.students.length){ toast('אין תלמידות ברשימה'); return; }
+  if (!DATA.students.length){ toast('אין משתתפים ברשימה'); return; }
   toast('משבץ…');
-  google.script.run.withSuccessHandler(function(s){ GROUPS=JSON.parse(s).groups; toast('שובץ!'); renderGroups(); }).withFailureHandler(err).apiGenerate(SIZE);
+  google.script.run.withSuccessHandler(function(s){ GROUPS=JSON.parse(s).groups; toast('שובץ!'); renderGroups(); }).withFailureHandler(err).apiGenerate();
 }
 function saveRound(){
   if (!GROUPS){ return; }
   toast('שומר סבב…');
-  google.script.run.withSuccessHandler(function(s){ DATA.rounds=JSON.parse(s).rounds; GROUPS=null; toast('הסבב נשמר'); renderAll(); }).withFailureHandler(err).apiSaveRound(SIZE, JSON.stringify(GROUPS));
+  google.script.run.withSuccessHandler(function(s){ DATA.rounds=JSON.parse(s).rounds; GROUPS=null; toast('הסבב נשמר · הספירה לחודשיים התחילה'); renderAll(); }).withFailureHandler(err).apiSaveRound(JSON.stringify(GROUPS));
 }
 function delRound(id){
   if(!confirm('למחוק את הסבב?')) return;
   google.script.run.withSuccessHandler(function(s){ DATA.rounds=JSON.parse(s).rounds; toast('נמחק'); renderAll(); }).withFailureHandler(err).apiDeleteRound(id);
 }
 
+// ── עזרי תאריך ──────────────────────────────────────────────────
+function daysUntil(dateStr){
+  if (!dateStr) return null;
+  var end = new Date(dateStr); if (isNaN(end)) return null;
+  var now = new Date();
+  var a = Date.UTC(end.getFullYear(), end.getMonth(), end.getDate());
+  var b = Date.UTC(now.getFullYear(), now.getMonth(), now.getDate());
+  return Math.round((a - b) / 86400000);
+}
+function fmt(dateStr){
+  if (!dateStr) return '';
+  var d = new Date(dateStr); if (isNaN(d)) return dateStr;
+  return ('0'+d.getDate()).slice(-2)+'/'+('0'+(d.getMonth()+1)).slice(-2)+'/'+d.getFullYear();
+}
 function toast(m){ var t=document.getElementById('toast'); t.textContent=m; t.style.display='block'; clearTimeout(t._t); t._t=setTimeout(function(){t.style.display='none';},2400); }
 function err(e){ toast('שגיאה: '+(e.message||e)); }
 function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];}); }

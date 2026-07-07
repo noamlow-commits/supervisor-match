@@ -3,16 +3,23 @@
  */
 function gsDb_(){ var id = getDbId_(); if (!id) throw new Error('הריצו setup() תחילה'); return SpreadsheetApp.openById(id); }
 function todayStr_(){ return Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd'); }
+// תאריך + N חודשים (yyyy-MM-dd) — לחישוב מועד ההחלפה של סבב.
+function addMonths_(dateStr, m){
+  var d = dateStr ? new Date(dateStr) : new Date();
+  if (isNaN(d)) d = new Date();
+  d.setMonth(d.getMonth() + (Number(m) || 0));
+  return Utilities.formatDate(d, Session.getScriptTimeZone(), 'yyyy-MM-dd');
+}
 
-// ── תלמידות ────────────────────────────────────────────────────
-function readStudents_(){
-  var sh = gsDb_().getSheetByName(SHEET_STUDENTS); var n = sh.getLastRow();
+// ── רשימת שמות גנרית (משמשת גם למשתתפים וגם לקבוצה הקבועה) ─────
+function readNames_(sheetName){
+  var sh = gsDb_().getSheetByName(sheetName); var n = sh ? sh.getLastRow() : 0;
   if (n < 2) return [];
   return sh.getRange(2,1,n-1,1).getValues().map(function(r){ return String(r[0]||'').trim(); }).filter(String);
 }
 // מחליף את כל הרשימה (מסיר כפילויות, שומר סדר).
-function writeStudents_(names){
-  var sh = gsDb_().getSheetByName(SHEET_STUDENTS);
+function writeNames_(sheetName, names){
+  var sh = gsDb_().getSheetByName(sheetName);
   var seen = {}, out = [];
   (names||[]).forEach(function(x){ x = String(x||'').trim(); var k = x.toLowerCase(); if (x && !seen[k]){ seen[k]=1; out.push(x); } });
   var last = sh.getLastRow();
@@ -20,20 +27,31 @@ function writeStudents_(names){
   if (out.length) sh.getRange(2,1,out.length,1).setValues(out.map(function(x){ return [x]; }));
   return out;
 }
+function readStudents_(){ return readNames_(SHEET_STUDENTS); }
+function writeStudents_(names){ return writeNames_(SHEET_STUDENTS, names); }
+function readFixed_(){ return readNames_(SHEET_FIXED); }
+function writeFixed_(names){ return writeNames_(SHEET_FIXED, names); }
 
 // ── סבבים (היסטוריה) ───────────────────────────────────────────
+// עמודות: מזהה | תאריך התחלה | תאריך החלפה | זוגות(JSON) | קבוצה קבועה(JSON)
 function readRounds_(){
   var sh = gsDb_().getSheetByName(SHEET_ROUNDS); var n = sh.getLastRow();
   if (n < 2) return [];
-  return sh.getRange(2,1,n-1,4).getValues().filter(function(r){ return r[0]; }).map(function(r){
-    var g = []; try { g = JSON.parse(r[3]); } catch(e){}
-    return { roundId:String(r[0]), date:String(r[1]), size:Number(r[2])||0, groups:g };
+  return sh.getRange(2,1,n-1,5).getValues().filter(function(r){ return r[0]; }).map(function(r){
+    var pairs = [], fixed = [];
+    try { pairs = JSON.parse(r[3]); } catch(e){}
+    try { fixed = JSON.parse(r[4]); } catch(e){}
+    return { roundId:String(r[0]), start:String(r[1]), end:String(r[2]), groups:pairs, fixed:fixed };
   });
 }
-function saveRound_(size, groups){
+// שומר סבב חדש: תאריך התחלה = היום, תאריך החלפה = היום + ROTATION_MONTHS.
+// הקבוצה הקבועה נשמרת כצילום-מצב (מי היה בה באותו זמן).
+function saveRound_(pairs, fixed){
   var sh = gsDb_().getSheetByName(SHEET_ROUNDS);
   var id = 'R' + Utilities.getUuid().slice(0,8);
-  sh.appendRow([id, todayStr_(), size, JSON.stringify(groups)]);
+  var start = todayStr_();
+  var end = addMonths_(start, ROTATION_MONTHS);
+  sh.appendRow([id, start, end, JSON.stringify(pairs||[]), JSON.stringify(fixed||[])]);
   return id;
 }
 function deleteRound_(id){
@@ -44,7 +62,7 @@ function deleteRound_(id){
 
 // ── אלגוריתם השיבוץ ────────────────────────────────────────────
 function pairKey_(a,b){ return a < b ? a+'|'+b : b+'|'+a; }
-// כמה פעמים כל זוג היה יחד בעבר.
+// כמה פעמים כל זוג היה יחד בעבר (רק בזוגות המתחלפים — הקבוצה הקבועה אינה נספרת).
 function pairCounts_(rounds){
   var pc = {};
   (rounds||[]).forEach(function(rd){ (rd.groups||[]).forEach(function(g){
@@ -53,31 +71,52 @@ function pairCounts_(rounds){
   return pc;
 }
 function shuffle_(a){ for (var i=a.length-1;i>0;i--){ var j=Math.floor(Math.random()*(i+1)); var t=a[i]; a[i]=a[j]; a[j]=t; } return a; }
+// כמה פעמים כל אדם כבר היה בשלישייה (קבוצה מוגדלת) — להוגנות בבחירת איש-השלישייה.
+function trioCounts_(rounds){
+  var tc = {};
+  (rounds||[]).forEach(function(rd){ (rd.groups||[]).forEach(function(g){
+    if (g.length > 2) g.forEach(function(n){ tc[n] = (tc[n]||0)+1; });
+  }); });
+  return tc;
+}
 
-// שיבוץ חכם: גרידי שמעדיף לצרף לכל קבוצה את מי שהכי פחות היה עם חבריה בעבר.
-function generateGroups_(names, size, rounds){
-  size = (Number(size) === 4) ? 4 : 2;
+// שיבוץ חכם לזוגות: מזעור חזרות (מעדיף לצרף את מי שהכי פחות היה עם בן-הזוג בעבר,
+// שובר-שוויון אקראי). מספר אי-זוגי → שלישייה אחת, ואיש-השלישייה מתחלף בהוגנות
+// (מי שהיה הכי פחות בשלישייה בעבר) כדי שאותו אדם לא ייתקע בשלישייה כל פעם.
+function generatePairs_(names, rounds){
   var pc = pairCounts_(rounds);
   var pool = shuffle_((names||[]).slice());
+  // אי-זוגי → מפרישים מראש את איש-השלישייה: זה שהיה הכי פחות בשלישייה (pool כבר מעורבב = שובר-שוויון).
+  var extra = null;
+  if (pool.length % 2 === 1){
+    var tc = trioCounts_(rounds);
+    var idx = 0, bestT = Infinity;
+    for (var i=0;i<pool.length;i++){ var t = (tc[pool[i]]||0) + Math.random()*0.001; if (t < bestT){ bestT = t; idx = i; } }
+    extra = pool.splice(idx,1)[0];
+  }
+  // בונים זוגות טהורים מהנותרים.
   var groups = [];
   while (pool.length){
-    var gsize = Math.min(size, pool.length);
-    var group = [pool.shift()];
-    while (group.length < gsize && pool.length){
-      var best = 0, bestScore = Infinity;
-      for (var i=0;i<pool.length;i++){
-        var s = 0; for (var j=0;j<group.length;j++){ s += pc[pairKey_(pool[i], group[j])] || 0; }
-        s += Math.random() * 0.001;   // שובר-שוויון אקראי
-        if (s < bestScore){ bestScore = s; best = i; }
-      }
-      group.push(pool.splice(best,1)[0]);
+    var a = pool.shift();
+    var best = 0, bestScore = Infinity;
+    for (var i=0;i<pool.length;i++){
+      var s = (pc[pairKey_(pool[i], a)] || 0) + Math.random()*0.001;
+      if (s < bestScore){ bestScore = s; best = i; }
     }
-    groups.push(group);
+    groups.push([a, pool.splice(best,1)[0]]);
   }
-  // אם נותרה קבוצת-יחיד — ממזגים אותה לקבוצה הקודמת (קבוצה אחת בגודל שונה).
-  if (groups.length > 1 && groups[groups.length-1].length === 1){
-    var solo = groups.pop()[0];
-    groups[groups.length-1].push(solo);
+  // משבצים את איש-השלישייה לזוג שאיתו היה הכי פחות (הופך אותו לשלישייה אחת).
+  if (extra !== null){
+    if (!groups.length){ groups.push([extra]); }
+    else {
+      var bi = 0, bscore = Infinity;
+      for (var i=0;i<groups.length;i++){
+        var s2 = 0; for (var j=0;j<groups[i].length;j++){ s2 += pc[pairKey_(extra, groups[i][j])] || 0; }
+        s2 += Math.random()*0.001;
+        if (s2 < bscore){ bscore = s2; bi = i; }
+      }
+      groups[bi].push(extra);
+    }
   }
   return groups;
 }
