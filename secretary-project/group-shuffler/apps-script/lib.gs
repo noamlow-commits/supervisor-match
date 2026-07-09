@@ -59,6 +59,13 @@ function deleteRound_(id){
   for (var i=1;i<data.length;i++){ if (String(data[i][0])===id){ sh.deleteRow(i+1); return true; } }
   return false;
 }
+// עדכון ידני של הזוגות בסבב קיים (החלפת חברים בין זוגות), בלי לשנות את תאריכי הנעילה.
+// עמודה 4 = זוגות(JSON). התאריכים (התחלה/החלפה) והקבוצה הקבועה נשארים כמות שהם.
+function updateRound_(id, pairs){
+  var sh = gsDb_().getSheetByName(SHEET_ROUNDS); var data = sh.getDataRange().getValues();
+  for (var i=1;i<data.length;i++){ if (String(data[i][0])===id){ sh.getRange(i+1,4).setValue(JSON.stringify(pairs||[])); return true; } }
+  return false;
+}
 
 // ── אלגוריתם השיבוץ ────────────────────────────────────────────
 function pairKey_(a,b){ return a < b ? a+'|'+b : b+'|'+a; }

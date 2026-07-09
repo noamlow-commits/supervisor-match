@@ -31,3 +31,5 @@ function apiSaveRound(pairsJson){
   return JSON.stringify({ ok:true, rounds: readRounds_() });
 }
 function apiDeleteRound(id){ deleteRound_(id); return JSON.stringify({ ok:true, rounds: readRounds_() }); }
+// עדכון ידני של הזוגות בסבב קיים (החלפה ידנית אחרי העירבוב/הנעילה) — התאריכים נשמרים.
+function apiUpdateRound(id, pairsJson){ updateRound_(id, JSON.parse(pairsJson)); return JSON.stringify({ ok:true, rounds: readRounds_() }); }

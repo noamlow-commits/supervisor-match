@@ -28,6 +28,10 @@
   .grp ul{margin:0;padding:8px 11px;list-style:none}
   .grp li{padding:4px 0;border-bottom:1px solid #f0f4f6}
   .grp li:last-child{border:none}
+  .grp li.clk{cursor:pointer;padding:5px 7px;border-radius:6px}
+  .grp li.clk:hover{background:#eef7f6}
+  .grp li.sel{background:var(--gold-bg);outline:2px solid var(--gold);font-weight:600}
+  .hint{background:var(--warn-bg);color:var(--warn);border:1px solid #f0cd8a;border-radius:8px;padding:8px 11px;font-size:12.5px;margin-top:12px;line-height:1.5}
   .grp.fixed{border-color:#e6cf9b}
   .grp.fixed h4{background:var(--gold)}
   .hist-item{border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin-bottom:10px}
@@ -48,7 +52,12 @@
 
 <script>
 var DATA = {students:[], fixed:[], rounds:[], rotationMonths:2};
-var GROUPS = null;   // תוצאת השיבוץ הנוכחי (זוגות, לפני שמירה)
+// עריכת הזוגות (בעריכה = טיוטה חדשה או סבב נעול קיים):
+var WORK = null;        // מערך הזוגות שנמצא כרגע בעריכה/תצוגה
+var WORK_MODE = null;   // 'draft' = שיבוץ חדש שטרם נשמר | 'locked' = החלפה ידנית בסבב הנעול
+var WORK_ROUND = null;  // roundId של הסבב הנעול הנערך
+var SEL = null;         // {gi,ni} — החבר שנבחר ראשון להחלפה
+var DIRTY = false;      // יש שינויים לא-שמורים בעריכת סבב נעול
 
 function load(){
   google.script.run.withSuccessHandler(function(s){ DATA = JSON.parse(s); renderAll(); }).withFailureHandler(err).apiData();
@@ -59,7 +68,7 @@ function renderAll(){
     panelStudents() + panelFixed() + panelGenerate() + panelHistory();
   document.getElementById('students').value = DATA.students.join('\n');
   document.getElementById('fixed').value = DATA.fixed.join('\n');
-  renderGroups();
+  renderWork();
 }
 
 function panelStudents(){
@@ -77,10 +86,15 @@ function panelFixed(){
 function panelGenerate(){
   return '<div class="panel"><h2>סבב חדש</h2>'+ roundStatus() +
     '<div class="row">'+
-      '<button class="btn" onclick="generate()">🎲 שבץ זוגות</button>'+
+      '<button class="btn" id="genBtn" onclick="generate()">🎲 שבץ זוגות</button>'+
       '<button class="btn ghost" onclick="generate()" id="reshuffle" style="display:none">🔀 ערבב שוב</button>'+
       '<button class="btn" onclick="saveRound()" id="saveRound" style="display:none">✔ שמור סבב</button>'+
-    '</div><div class="groups" id="groups"></div></div>';
+      '<button class="btn" style="background:var(--gold);display:none" onclick="editCurrent()" id="editCurrent">✏️ החלפה ידנית בסבב הנוכחי</button>'+
+      '<button class="btn" onclick="saveEdits()" id="saveEdits" style="display:none">💾 שמור שינויים</button>'+
+      '<button class="btn ghost" onclick="cancelEdit()" id="cancelEdit" style="display:none">↩ ביטול</button>'+
+    '</div>'+
+    '<div class="hint" id="swapHint" style="display:none">👆 להחלפה ידנית: לחצו על שם אחד ואז על שם אחר — והם יתחלפו זה בזה בין הזוגות. חוזרים על כך לכל החלפה שרוצים.</div>'+
+    '<div class="groups" id="groups"></div></div>';
 }
 
 // סטטוס הסבב הנוכחי: מתי התחיל, מתי מתחלף, כמה נשאר — או "הגיע הזמן להחליף".
@@ -94,21 +108,56 @@ function roundStatus(){
   return '<div class="status due">🔁 הגיע הזמן להחליף! מועד ההחלפה ('+esc(fmt(last.end))+') חלף לפני '+(-d)+' ימים. שבצו זוגות חדשים.</div>';
 }
 
-function renderGroups(){
+function show(id,on){ var e=document.getElementById(id); if(e) e.style.display = on?'':'none'; }
+
+// מציג את הזוגות בשלושה מצבים:
+//  • WORK בעריכה ('draft' טיוטה חדשה / 'locked' סבב נעול) → כרטיסים לחיצים להחלפה ידנית
+//  • אין WORK אבל יש סבב שמור → תצוגת הסבב הנעול הנוכחי (לקריאה) + כפתור "החלפה ידנית"
+//  • אין כלום → ריק
+function renderWork(){
   var el = document.getElementById('groups'); if(!el) return;
-  document.getElementById('reshuffle').style.display = GROUPS ? '' : 'none';
-  document.getElementById('saveRound').style.display = GROUPS ? '' : 'none';
-  if (!GROUPS){ el.innerHTML=''; return; }
-  var html = GROUPS.map(function(g,i){
-    return '<div class="grp"><h4>זוג '+(i+1)+(g.length>2?' (שלישייה)':'')+'</h4><ul>'+
-      g.map(function(n){ return '<li>'+esc(n)+'</li>'; }).join('')+'</ul></div>';
+  var cur = DATA.rounds.length ? DATA.rounds[DATA.rounds.length-1] : null;
+  var editing = !!WORK;
+  show('genBtn', !editing);
+  show('reshuffle', WORK_MODE==='draft');
+  show('saveRound', WORK_MODE==='draft');
+  show('editCurrent', !editing && !!cur);
+  show('saveEdits', WORK_MODE==='locked');
+  show('cancelEdit', WORK_MODE==='locked');
+  show('swapHint', editing);
+
+  var pairs = editing ? WORK : (cur ? cur.groups : null);
+  // הקבוצה הקבועה: בטיוטה חדשה — הנוכחית; בעריכת/תצוגת סבב — צילום-המצב של אותו סבב.
+  var fixedList = (WORK_MODE==='draft') ? DATA.fixed : (cur ? cur.fixed : DATA.fixed);
+  if (!pairs){ el.innerHTML=''; return; }
+
+  var html = pairs.map(function(g,gi){
+    return '<div class="grp"><h4>זוג '+(gi+1)+(g.length>2?' (שלישייה)':'')+'</h4><ul>'+
+      g.map(function(n,ni){
+        var isSel = SEL && SEL.gi===gi && SEL.ni===ni;
+        return '<li class="mem'+(editing?' clk':'')+(isSel?' sel':'')+'"'+
+          (editing?' onclick="pick('+gi+','+ni+')"':'')+'>'+esc(n)+'</li>';
+      }).join('')+'</ul></div>';
   }).join('');
-  // הקבוצה הקבועה — מוצגת תמיד בסוף, בצבע נבדל.
-  if (DATA.fixed && DATA.fixed.length){
+  // הקבוצה הקבועה — מוצגת תמיד בסוף, בצבע נבדל (אינה משתתפת בהחלפות).
+  if (fixedList && fixedList.length){
     html += '<div class="grp fixed"><h4>קבוצה קבועה · הגברים</h4><ul>'+
-      DATA.fixed.map(function(n){ return '<li>'+esc(n)+'</li>'; }).join('')+'</ul></div>';
+      fixedList.map(function(n){ return '<li>'+esc(n)+'</li>'; }).join('')+'</ul></div>';
   }
   el.innerHTML = html;
+}
+
+// בחירת חבר להחלפה: לחיצה ראשונה בוחרת, שנייה מחליפה בין השניים.
+function pick(gi,ni){
+  if (!WORK) return;
+  if (SEL && SEL.gi===gi && SEL.ni===ni){ SEL=null; renderWork(); return; } // ביטול בחירה
+  if (!SEL){ SEL={gi:gi,ni:ni}; renderWork(); return; }
+  var tmp = WORK[SEL.gi][SEL.ni];
+  WORK[SEL.gi][SEL.ni] = WORK[gi][ni];
+  WORK[gi][ni] = tmp;
+  SEL = null;
+  if (WORK_MODE==='locked') DIRTY = true;
+  renderWork();
 }
 
 function panelHistory(){
@@ -138,12 +187,30 @@ function saveFixed(){
 function generate(){
   if (!DATA.students.length){ toast('אין משתתפים ברשימה'); return; }
   toast('משבץ…');
-  google.script.run.withSuccessHandler(function(s){ GROUPS=JSON.parse(s).groups; toast('שובץ!'); renderGroups(); }).withFailureHandler(err).apiGenerate();
+  google.script.run.withSuccessHandler(function(s){ WORK=JSON.parse(s).groups; WORK_MODE='draft'; WORK_ROUND=null; SEL=null; DIRTY=false; toast('שובץ! אפשר לערבב שוב, להחליף ידנית, או לשמור.'); renderWork(); }).withFailureHandler(err).apiGenerate();
 }
 function saveRound(){
-  if (!GROUPS){ return; }
+  if (!WORK || WORK_MODE!=='draft'){ return; }
   toast('שומר סבב…');
-  google.script.run.withSuccessHandler(function(s){ DATA.rounds=JSON.parse(s).rounds; GROUPS=null; toast('הסבב נשמר · הספירה לחודשיים התחילה'); renderAll(); }).withFailureHandler(err).apiSaveRound(JSON.stringify(GROUPS));
+  google.script.run.withSuccessHandler(function(s){ DATA.rounds=JSON.parse(s).rounds; WORK=null; WORK_MODE=null; SEL=null; toast('הסבב נשמר · הספירה לחודשיים התחילה'); renderAll(); }).withFailureHandler(err).apiSaveRound(JSON.stringify(WORK));
+}
+// פתיחת הסבב הנעול הנוכחי להחלפה ידנית (עותק עבודה; לא נשמר עד "שמור שינויים").
+function editCurrent(){
+  var cur = DATA.rounds.length ? DATA.rounds[DATA.rounds.length-1] : null;
+  if (!cur){ return; }
+  WORK = JSON.parse(JSON.stringify(cur.groups||[]));
+  WORK_MODE='locked'; WORK_ROUND=cur.roundId; SEL=null; DIRTY=false;
+  renderWork();
+}
+// שמירת ההחלפות הידניות אל הסבב הנעול (התאריכים נשארים; רק הזוגות מתעדכנים).
+function saveEdits(){
+  if (WORK_MODE!=='locked' || !WORK_ROUND){ return; }
+  toast('שומר שינויים…');
+  google.script.run.withSuccessHandler(function(s){ DATA.rounds=JSON.parse(s).rounds; WORK=null; WORK_MODE=null; WORK_ROUND=null; SEL=null; DIRTY=false; toast('השינויים נשמרו בסבב הנוכחי'); renderAll(); }).withFailureHandler(err).apiUpdateRound(WORK_ROUND, JSON.stringify(WORK));
+}
+function cancelEdit(){
+  if (DIRTY && !confirm('לבטל את ההחלפות שלא נשמרו?')) return;
+  WORK=null; WORK_MODE=null; WORK_ROUND=null; SEL=null; DIRTY=false; renderWork();
 }
 function delRound(id){
   if(!confirm('למחוק את הסבב?')) return;
