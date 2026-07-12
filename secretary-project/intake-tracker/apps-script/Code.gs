@@ -36,6 +36,7 @@ function apiBoard(){
     genericFunnel: GENERIC_FUNNEL.map(function(f){return f.stage;}),
     stageRequires: STAGE_REQUIRES,
     stageApply: STAGE_APPLY,
+    autoDatePairs: AUTO_DATE_PAIRS,
     programCardHide: PROGRAM_CARD_HIDE,
     stages: DIALOGI_FUNNEL.map(function(f){return f.stage;}),   // ברירת-מחדל (תאימות)
     schema: SCHEMA,
@@ -79,6 +80,7 @@ function apiUpdate(patch){
     return k !== 'id' && k !== 'boardStage' && c && !c.computed && !c.aug;
   });
   if (changedFacts && patch.boardStage === undefined) target.boardStage = '';
+  applyAutoDates_(target);   // ✓ שסומן + תאריך צמוד ריק → תאריך היום (גם בגרירה; לא דורס ידני)
   target.updatedAt = todayStr_();
   computeRow_(target);
   // אם השלב האפקטיבי השתנה (גרירה / סימון / שינוי-שלב) — מאפסים את מונה ההתיישנות.
@@ -109,6 +111,7 @@ function apiCreate(rec){
   rec.updatedAt = todayStr_();
   rec.stageSince = todayStr_();
   if (!rec.status) rec.status = 'פנייה חדשה';
+  applyAutoDates_(rec);
   computeRow_(rec);
   sh.appendRow(lineForSheet_(sh, rec));   // לפי סדר העמודות בגיליון (מונע אי-התאמה)
   return JSON.stringify(sanitizeOut_(rec));

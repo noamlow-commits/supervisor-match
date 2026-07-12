@@ -173,6 +173,18 @@ function needsReminder_(o){
 
 function todayStr_(){ return Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd'); }
 
+// מילוי-אוטומטי של תאריך אבן-דרך (בקשת טל): ✓ מסומן + התאריך הצמוד ריק → תאריך היום.
+// לא דורס תאריך קיים (ידני או קודם). רץ בשרת כדי לכסות גם *גרירה* בין שלבים (STAGE_APPLY),
+// לא רק סימון ידני בכרטיס.
+function applyAutoDates_(o){
+  Object.keys(AUTO_DATE_PAIRS).forEach(function(bk){
+    var dk = AUTO_DATE_PAIRS[bk];
+    var cur = (o[dk] === null || o[dk] === undefined) ? '' : String(o[dk]).trim();
+    if (toBool_(o[bk]) && !cur) o[dk] = todayStr_();
+  });
+  return o;
+}
+
 // המרת תאריכים לטקסט yyyy-MM-dd — כדי שהחזרה ללקוח תהיה JSON-בטוחה.
 function fmtDate_(v){
   if (v instanceof Date && !isNaN(v)) return Utilities.formatDate(v, Session.getScriptTimeZone(), 'yyyy-MM-dd');
