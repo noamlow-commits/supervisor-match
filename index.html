@@ -308,10 +308,6 @@
         <div class="filter-group-label">אזור</div>
         <div class="chip-row" data-filter="area"></div>
       </div>
-      <div class="filter-group">
-        <div class="filter-group-label">זמינות</div>
-        <div class="chip-row" data-filter="hasSpot"></div>
-      </div>
     </div>
   </div>
 </div>
@@ -543,8 +539,7 @@ function buildFilters(){
     orientations: PARAMS.orientations,
     populations: PARAMS.populations,
     format: PARAMS.formats,
-    area: PARAMS.areas,
-    hasSpot: ['יש מקום פנוי']
+    area: PARAMS.areas
   };
   for(const [key, items] of Object.entries(groups)){
     const row = document.querySelector(`[data-filter="${key}"]`);
@@ -589,8 +584,13 @@ function matchesFilters(s){
   return true;
 }
 
+// מיכל (2026-07): תלמידים שמחפשים מדריך לא רואים מדריכים תפוסים (יוצר תסכול).
+// מסתירים מהדירקטוריון מדריך שאין לו מקום פנוי. כרטיסי ייעוץ פסיכיאטרי (consultation)
+// מוצגים תמיד — אין להם מושג של "מקום הדרכה", והם זמינים לפנייה בכל עת.
+function visibleToStudents(s){ return s.cardType === 'consultation' || s.hasSpot; }
+
 function render(){
-  const filtered = SUPERVISORS.filter(matchesFilters);
+  const filtered = SUPERVISORS.filter(s => visibleToStudents(s) && matchesFilters(s));
   const grid = document.getElementById('grid');
   const _n = filtered.length;
   document.getElementById('countBadge').textContent =
