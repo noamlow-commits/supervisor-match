@@ -101,10 +101,11 @@ function apiCreate(rec){
     throw new Error('יש לבחור תוכנית');
   ensureColumns_();
   var sh = inquiriesSheet_();
-  // דה-דופ: אם כבר קיימת פנייה עם אותו מפתח-זהות (תוכנית+קוד/טלפון/שם) — לא ליצור כפיל.
-  var key = recordKey_(rec);
-  if (readInquiries_().some(function(o){ return recordKey_(o) === key; }))
-    throw new Error('כבר קיימת פנייה דומה (אותו אדם באותה תוכנית). פתח/י ועדכן/י אותה במקום ליצור חדשה.');
+  // דה-דופ: אם כבר קיימת רשומה של אותו אדם באותה תוכנית — לא ליצור כפיל.
+  // sameRecord_ תופס גם כשברשומה הקיימת יש טלפון ובחדשה רק שם (או להיפך) — הפער
+  // שאיפשר את כפילות "גינת סבח" (2026-07-19). recordKey_ היחיד היה מפספס זאת.
+  if (readInquiries_().some(function(o){ return sameRecord_(o, rec); }))
+    throw new Error('כבר קיימת רשומה דומה (אותו אדם באותה תוכנית). פתח/י ועדכן/י אותה במקום ליצור חדשה.');
   rec.id = 'A' + Utilities.getUuid().slice(0,8);
   rec.source = 'app';
   rec.inquiryDate = todayStr_();

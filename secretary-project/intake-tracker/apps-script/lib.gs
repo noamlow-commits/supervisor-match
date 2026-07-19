@@ -109,6 +109,23 @@ function recordKey_(o){
   return pk + '|' + base;
 }
 
+// האם שתי רשומות מתייחסות לאותו אדם באותה תוכנית? (לדה-דופ ביצירה ידנית).
+// שדרוג על recordKey_ היחיד: recordKey_ בוחר מזהה *אחד* (קוד→טלפון→שם), כך שאותו אדם
+// שהוזן פעם עם טלפון ופעם בלי (רק שם) קיבל מפתחות שונים והכפיל חמק (מקרה גינת סבח 2026-07-19).
+// כאן: קוד-לקוח מכריע אם לשניהם יש; אחרת טלפון מכריע אם לשניהם יש; אחרת נופלים לשם —
+// כך שרשומה חסרת-טלפון עדיין נתפסת מול רשומה עם טלפון, בלי לחסום שני אנשים שונים
+// באותו שם ששניהם עם טלפונים שונים.
+function sameRecord_(a, b){
+  if (normHeader_(canonicalProgram_(a.program||'')) !== normHeader_(canonicalProgram_(b.program||''))) return false;
+  var ac = a.crmCode ? String(a.crmCode).replace(/\D/g,'') : '';
+  var bc = b.crmCode ? String(b.crmCode).replace(/\D/g,'') : '';
+  if (ac && bc) return ac === bc;                 // שניהם עם קוד-לקוח → הקוד מכריע
+  var ap = cleanPhone_(a.phone), bp = cleanPhone_(b.phone);
+  if (ap && bp) return ap === bp;                 // שניהם עם טלפון → הטלפון מכריע
+  var an = normHeader_(a.name||'');               // לפחות לאחד חסר מזהה חזק → משווים שם
+  return !!an && an === normHeader_(b.name||'');
+}
+
 // ── חישוב שלב / פעולה / תזכורת (תלוי-תוכנית) ──────────────────
 function computeRow_(o){
   if (isClosed_(o)){

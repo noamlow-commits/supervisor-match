@@ -688,6 +688,25 @@ function collect(isNew){
   return patch;
 }
 
+// מטפל-הצלחה ליצירה: רשומה שאינה "פנייה" (קורס/איש-קשר) לא מופיעה בלוח המשפך —
+// לכן טוסט מטעה של "נוצרה פנייה" + היעלמות שקטה גרמו לטל להזין את גינת סבח פעמיים (2026-07-19).
+// עכשיו: טוסט מדויק + קפיצה ללשונית הנכונה, ולפנייה — איפוס מסננים אם היו מסתירים אותה.
+function afterCreate(s){
+  closeOv();
+  var u=null; try{ u=JSON.parse(s); }catch(e){}
+  var rt = u ? (u.recordType||'פנייה') : 'פנייה';
+  if (rt==='קורס'){ patchLocal(s); toast("✓ נוצר קורס — נמצא בלשונית 'קורסים'"); show('courses'); return; }
+  if (rt==='איש-קשר'){ patchLocal(s); toast("✓ נוצר איש-קשר — נמצא בלשונית 'אנשי קשר'"); show('contacts'); return; }
+  // פנייה — לוודא שהיא באמת נראית בלוח (מסנן תוכנית/תזכורת/תשלום עלול להסתיר בשקט).
+  if (CURRENT_VIEW==='board'){
+    var pf=document.getElementById('progFilter'), ro=document.getElementById('remOnly'), po=document.getElementById('payOnly');
+    var hidden = (pf && pf.value && canonProg(u&&u.program)!==pf.value) || (ro&&ro.checked) || (po&&po.checked);
+    if (hidden){ if(pf)pf.value=''; if(ro)ro.checked=false; if(po)po.checked=false; toast('נוצרה פנייה — אופסו המסננים כדי להציג אותה'); }
+    else toast('נוצרה פנייה');
+  } else toast('נוצרה פנייה');
+  patchLocal(s);
+}
+
 function save(id, isNew){
   var patch = collect(isNew);
   if (isNew){
@@ -700,7 +719,7 @@ function save(id, isNew){
   }
   toast('שומר…');
   if (isNew){
-    google.script.run.withSuccessHandler(function(s){ closeOv(); toast('נוצרה פנייה'); patchLocal(s); }).withFailureHandler(err).apiCreate(patch);
+    google.script.run.withSuccessHandler(afterCreate).withFailureHandler(err).apiCreate(patch);
   } else {
     patch.id = id;
     google.script.run.withSuccessHandler(function(s){ closeOv(); toast('נשמר'); patchLocal(s); }).withFailureHandler(err).apiUpdate(patch);
