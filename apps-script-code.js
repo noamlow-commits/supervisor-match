@@ -44,12 +44,22 @@ const SUPERVISOR_COLS = [
   'studentsAccepted',
   'mailed',         // TRUE after claim/registration email sent
   'maxStudents',    // capacity stated by supervisor (form, May 2026). ADMIN-ONLY — never sent to students.
-  'cardType'        // '' = supervision (default) | 'consultation' = focused psychiatric consultation, NOT supervision (admin-set). See ensureCardTypeColumn().
+  'cardType',       // '' = supervision (default) | 'consultation' = focused psychiatric consultation, NOT supervision (admin-set). See ensureCardTypeColumn().
+  'archived'        // TRUE = kept on file but out of circulation this year. See ensureArchivedColumn().
 ];
 
 // True when this card offers focused consultation (e.g. psychiatric) rather than supervision (הדרכה).
 function isConsultation(r) {
   return String(r.cardType || '').trim() === 'consultation';
+}
+
+// Archived = "keep them for next year". The row stays on file with everything intact,
+// but the supervisor is out of circulation: invisible to students, excluded from every
+// count, and parked in their own group in the admin dashboard. Reversible at any time.
+// This is deliberately NOT the same as published=false — a draft is someone who hasn't
+// filled their profile in yet, an archive is someone deliberately set aside.
+function isArchived(r) {
+  return r.archived === true || String(r.archived).toUpperCase() === 'TRUE';
 }
 
 /* ========== Routing ========== */
@@ -79,6 +89,8 @@ function handleRequest(e) {
       case 'saveSupervisor':         result = saveSupervisor(params); break;
       case 'getParameters':          result = getParameters(params); break;
       case 'getAdminStats':          result = getAdminStats(params); break;
+      case 'archiveSupervisor':      result = archiveSupervisor(params); break;
+      case 'deleteSupervisor':       result = deleteSupervisor(params); break;
       case 'getStudents':            result = getStudents(params); break;
       case 'addStudent':             result = addStudent(params); break;
       case 'updateStudent':          result = updateStudent(params); break;
@@ -209,7 +221,8 @@ function getSupervisors(p) {
   requireClassPin(p);
   const rows = readSupervisorRows();
   const counts = placedCountsByToken();
-  const published = rows.filter(r => r.published === true || r.published === 'TRUE' || r.published === 'true');
+  const published = rows.filter(r =>
+    (r.published === true || r.published === 'TRUE' || r.published === 'true') && !isArchived(r));
   return { supervisors: published.map(r => toClientSupervisor(r, counts[r.token] || 0)) };
 }
 
@@ -379,12 +392,101 @@ function saveSupervisor(p) {
   return { ok: true };
 }
 
+/* ========== Remove a supervisor — archive (reversible) or delete (permanent) ========== */
+
+/**
+ * Locate a supervisor row by token. Returns {rowNum, row, headers, sheet} or null.
+ * Token, not name — names repeat and get retyped; the token is the row's identity.
+ */
+function findSupervisorRowByToken_(token) {
+  const sheet = getOrCreateSupervisorsSheet();
+  const data = sheet.getDataRange().getValues();
+  const headers = data[0];
+  const tokenCol = headers.indexOf('token');
+  if (tokenCol < 0) return null;
+  for (let i = 1; i < data.length; i++) {
+    if (String(data[i][tokenCol]).trim() === String(token).trim()) {
+      return { rowNum: i + 1, row: data[i], headers: headers, sheet: sheet };
+    }
+  }
+  return null;
+}
+
+/**
+ * Archive / restore. The reversible one — "keep them for next year".
+ * Everything on the row is preserved; the supervisor just leaves circulation.
+ * params: adminPin, token, archived ('true' | 'false')
+ */
+function archiveSupervisor(p) {
+  requireAdminPin(p);
+  ensureArchivedColumn();
+
+  const token = String(p.token || '').trim();
+  if (!token) return { error: 'missing_token' };
+
+  const hit = findSupervisorRowByToken_(token);
+  if (!hit) return { error: 'not_found' };
+
+  const wantArchived = String(p.archived) === 'true';
+  const col = hit.headers.indexOf('archived');
+  if (col < 0) return { error: 'no_archived_column' };
+
+  hit.sheet.getRange(hit.rowNum, col + 1).setValue(wantArchived);
+  const updatedCol = hit.headers.indexOf('updated');
+  if (updatedCol >= 0) hit.sheet.getRange(hit.rowNum, updatedCol + 1).setValue(new Date().toISOString());
+
+  return {
+    ok: true,
+    archived: wantArchived,
+    fullName: String(hit.row[hit.headers.indexOf('fullName')] || '')
+  };
+}
+
+/**
+ * Permanent delete. Removes the row entirely — there is no undo.
+ *
+ * Refuses while students are still placed with this supervisor: their `placedWith`
+ * holds this token, so deleting the row would leave them pointing at nothing and the
+ * dashboard would quietly under-count placements. The secretary has to release those
+ * students first, which is the correct order of operations anyway.
+ *
+ * params: adminPin, token
+ */
+function deleteSupervisor(p) {
+  requireAdminPin(p);
+
+  const token = String(p.token || '').trim();
+  if (!token) return { error: 'missing_token' };
+
+  const hit = findSupervisorRowByToken_(token);
+  if (!hit) return { error: 'not_found' };
+
+  const placedNames = readStudentRows()
+    .filter(s => String(s.placedWith || '').trim() === token)
+    .map(s => s.fullName || '(ללא שם)');
+
+  if (placedNames.length > 0) {
+    return {
+      error: 'has_placed_students',
+      count: placedNames.length,
+      students: placedNames,
+      message: 'יש ' + placedNames.length + ' תלמידים שמשובצים למדריך הזה. ' +
+               'צריך לשחרר אותם קודם (או להעביר למדריך אחר), ואז אפשר למחוק.'
+    };
+  }
+
+  const fullName = String(hit.row[hit.headers.indexOf('fullName')] || '');
+  hit.sheet.deleteRow(hit.rowNum);
+  return { ok: true, deleted: true, fullName: fullName };
+}
+
 /* ========== Admin Stats ========== */
 
 function getAdminStats(p) {
   requireAdminPin(p);
   ensureMaxStudentsColumn();
   ensureCardTypeColumn();
+  ensureArchivedColumn();
   const rows = readSupervisorRows();
   const students = readStudentRows();
 
@@ -409,6 +511,7 @@ function getAdminStats(p) {
   const supervisors = rows.map(r => {
     const published = r.published === true || r.published === 'TRUE' || r.published === 'true';
     const consultation = isConsultation(r);
+    const archived = isArchived(r);
     const willing = r.hasSpot === true || r.hasSpot === 'TRUE' || r.hasSpot === 'true';
     const selfReported = Number(r.studentsAccepted) || 0;
     const placedFromList = placedPerSupervisor[r.token] || 0;
@@ -416,8 +519,11 @@ function getAdminStats(p) {
     const accepted = students.length > 0 ? placedFromList : selfReported;
     const atCapacity = isAtCapacity(r, placedFromList);
     // Consultation cards aren't supervision spots — never counted as available capacity.
-    const available = !consultation && willing && !atCapacity;   // effective availability
-    if (published) publishedCount++;
+    // Archived supervisors are out of circulation entirely: not published-count, not
+    // available-count. Their past placements still count toward totalAccepted, because
+    // those students really were placed and the roster shouldn't silently lose them.
+    const available = !consultation && !archived && willing && !atCapacity;
+    if (published && !archived) publishedCount++;
     if (available) withSpotCount++;
     totalAccepted += accepted;
     return {
@@ -425,6 +531,7 @@ function getAdminStats(p) {
       fullName: r.fullName || '(ללא שם)',
       credential: r.credential || '',
       published,
+      archived,                  // parked for a future year — admin-only concept
       cardType: r.cardType || '',  // '' = supervision | 'consultation' = psychiatric consultation
       hasSpot: available,        // effective (drives grouping + badge)
       willing,                   // the supervisor's manual toggle
@@ -445,7 +552,11 @@ function getAdminStats(p) {
 
   return {
     summary: {
-      totalSupervisors: rows.length,
+      // Archived supervisors are excluded from the headline count — they're on file,
+      // not in this year's roster. archivedCount surfaces them separately so they
+      // don't just silently vanish from the dashboard's totals.
+      totalSupervisors: rows.filter(r => !isArchived(r)).length,
+      archivedCount: rows.filter(r => isArchived(r)).length,
       publishedCount,
       withSpotCount,
       totalAccepted: students.length > 0 ? placedCount : totalAccepted,
@@ -1162,6 +1273,17 @@ function ensureCardTypeColumn() {
   const newCol = lastCol + 1;
   sheet.getRange(1, newCol).setValue('cardType');
   Logger.log('Added "cardType" column to Supervisors. Existing rows default to supervision (blank).');
+}
+
+function ensureArchivedColumn() {
+  const sheet = getOrCreateSupervisorsSheet();
+  const lastCol = sheet.getLastColumn();
+  const headers = sheet.getRange(1, 1, 1, lastCol).getValues()[0];
+  if (headers.indexOf('archived') >= 0) return;
+
+  const newCol = lastCol + 1;
+  sheet.getRange(1, newCol).setValue('archived');
+  Logger.log('Added "archived" column to Supervisors. Existing rows default to active (blank).');
 }
 
 function sendClaimEmail(toEmail, name, baseUrl) {

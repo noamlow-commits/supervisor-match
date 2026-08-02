@@ -124,6 +124,27 @@
   }
   .edit-btn:hover{background:var(--accent);color:white}
 
+  /* Archived = set aside for a future year. Muted, but not struck through — these
+     are real people we intend to bring back, not deleted records. */
+  tbody tr.sup-row.archived-row{background:#f7f7f9;opacity:.72}
+  tbody tr.sup-row.archived-row:hover{background:#eeeef2;opacity:1}
+  tbody tr.sup-row.archived-row .name-cell{color:var(--ink-soft)}
+  tr.sup-section-header.archived-header td{background:#f2f2f6;color:#5b5b6b;border-top-color:#cfcfda}
+
+  .row-actions{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+  .row-btn{
+    display:inline-flex;align-items:center;gap:4px;padding:6px 10px;
+    border:1px solid transparent;border-radius:8px;
+    font-family:inherit;font-size:12px;font-weight:600;
+    cursor:pointer;white-space:nowrap;transition:all .15s;
+  }
+  .row-btn:disabled{opacity:.5;cursor:default}
+  .archive-btn{background:#f1f2f6;color:#4a4f5e;border-color:#dcdfe8}
+  .archive-btn:hover:not(:disabled){background:#e3e5ec;color:#2f3444}
+  /* Delete stays quiet until you reach for it — it should not read as a primary action. */
+  .delete-btn{background:transparent;color:#a1a1aa;border-color:#e4e4e7}
+  .delete-btn:hover:not(:disabled){background:#fef2f2;color:#b91c1c;border-color:#fca5a5}
+
   /* Mobile table fallback */
   @media(max-width:640px){
     table thead{display:none}
@@ -392,7 +413,8 @@ function renderStats(d){
   lastData = d;
   const s = d.summary;
   document.getElementById('sumTotal').textContent = s.totalSupervisors;
-  document.getElementById('sumPublished').textContent = `${s.publishedCount} מפורסמים`;
+  document.getElementById('sumPublished').textContent =
+    `${s.publishedCount} מפורסמים` + (s.archivedCount ? ` · ${s.archivedCount} מוסתרים` : '');
   document.getElementById('sumAccepted').textContent = s.totalAccepted;
   const expectedLabel = s.hasStudentList
     ? `מתוך ${s.expectedStudents} בכיתה`
@@ -550,12 +572,16 @@ function renderTable(supervisors){
     return;
   }
 
-  // Three groups: published+hasSpot, published+!hasSpot, !published (drafts)
+  // Archived supervisors are pulled out first — they're set aside, not part of this
+  // year's picture, and shouldn't dilute any of the other groups.
+  const archived = supervisors.filter(s => s.archived);
+  const active   = supervisors.filter(s => !s.archived);
+
   // Within each group, keep existing sort (already sorted by getAdminStats: by accepted desc, by name)
-  const consult = supervisors.filter(s => s.published && s.cardType === 'consultation');
-  const hasSpot = supervisors.filter(s => s.published && s.hasSpot && s.cardType !== 'consultation');
-  const noSpot  = supervisors.filter(s => s.published && !s.hasSpot && s.cardType !== 'consultation');
-  const drafts  = supervisors.filter(s => !s.published);
+  const consult = active.filter(s => s.published && s.cardType === 'consultation');
+  const hasSpot = active.filter(s => s.published && s.hasSpot && s.cardType !== 'consultation');
+  const noSpot  = active.filter(s => s.published && !s.hasSpot && s.cardType !== 'consultation');
+  const drafts  = active.filter(s => !s.published);
 
   function renderRow(s, rowClass){
     const isConsult = s.cardType === 'consultation';
@@ -571,7 +597,12 @@ function renderTable(supervisors){
       <td data-label="מקום פנוי">${spotCell}</td>
       <td data-label="פרסום"><span class="badge ${s.published ? 'published' : 'unpublished'}">${s.published ? '● מפורסם' : '○ טיוטה'}</span></td>
       <td data-label="קשר"><div class="contact-mini">${s.email ? `<a href="mailto:${esc(s.email)}">${esc(s.email)}</a><br>`:''}${phoneStr ? `<a href="tel:${esc(phoneStr)}">${esc(phoneStr)}</a>`:''}</div></td>
-      <td data-label="פעולה">${editLink ? `<a class="edit-btn" href="${editLink}" target="_blank" rel="noopener">✎ ערוך</a>` : '—'}</td>
+      <td data-label="פעולה"><div class="row-actions">
+        ${editLink ? `<a class="edit-btn" href="${editLink}" target="_blank" rel="noopener">✎ ערוך</a>` : ''}
+        ${s.token ? `<button class="row-btn archive-btn" data-sup-action="${s.archived ? 'restore' : 'archive'}" data-token="${esc(s.token)}" data-name="${esc(s.fullName)}">${s.archived ? '↩ החזר לפעילות' : '📦 הסתר לשנה הבאה'}</button>` : ''}
+        ${s.token ? `<button class="row-btn delete-btn" data-sup-action="delete" data-token="${esc(s.token)}" data-name="${esc(s.fullName)}">🗑 מחק</button>` : ''}
+        ${!editLink && !s.token ? '—' : ''}
+      </div></td>
     </tr>`;
   }
 
@@ -606,10 +637,63 @@ function renderTable(supervisors){
   if(drafts.length > 0){
     html += `<tr class="sup-section-header draft-header${isFirst ? ' first':''}"><td colspan="7">○ טרם פרסמו פרופיל <span class="count">(${drafts.length})</span></td></tr>`;
     drafts.forEach(s => { html += renderRow(s, 'draft'); });
+    isFirst = false;
+  }
+  if(archived.length > 0){
+    html += `<tr class="sup-section-header archived-header${isFirst ? ' first':''}"><td colspan="7">📦 מוסתרים — שמורים לשנה הבאה <span class="count">(${archived.length})</span></td></tr>`;
+    archived.forEach(s => { html += renderRow(s, 'archived-row'); });
   }
 
   html += '</tbody></table>';
   c.innerHTML = html;
+  wireSupervisorActions(c);
+}
+
+/* ===== Archive / restore / delete a supervisor ===== */
+function wireSupervisorActions(c){
+  c.querySelectorAll('button[data-sup-action]').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const action = btn.dataset.supAction;
+      const token = btn.dataset.token;
+      const name  = btn.dataset.name || 'המדריך';
+      const pin   = sessionStorage.getItem('admin-pin') || '';
+
+      if(action === 'delete'){
+        // Two gates, because this one has no undo.
+        if(!confirm(`למחוק את ${name} לצמיתות?\n\nהכרטיס יימחק מהגיליון ולא יהיה אפשר לשחזר אותו.\n\nאם המטרה היא רק להוריד אותו מהמאגר לשנה הזאת — עדיף "הסתר לשנה הבאה", שנשמר ואפשר להחזיר.`)) return;
+        if(!confirm(`אישור אחרון — מחיקת ${name} היא בלתי הפיכה.`)) return;
+      }
+
+      if(!LIVE){
+        showErr('מצב דמו — הפעולה לא נשמרת.');
+        return;
+      }
+
+      btn.disabled = true;
+      const prev = btn.textContent;
+      btn.textContent = '…';
+
+      let r;
+      if(action === 'delete'){
+        r = await apiCall('deleteSupervisor', {adminPin: pin, token});
+      }else{
+        r = await apiCall('archiveSupervisor', {adminPin: pin, token, archived: action === 'archive' ? 'true' : 'false'});
+      }
+
+      if(!r || r.error){
+        btn.disabled = false;
+        btn.textContent = prev;
+        // The one refusal worth explaining properly rather than as a generic failure.
+        if(r && r.error === 'has_placed_students'){
+          showErr(`${name}: ${r.message}\nתלמידים: ${(r.students||[]).join(', ')}`);
+        }else{
+          showErr('הפעולה נכשלה: ' + (r && r.message ? r.message : (r && r.error) || 'שגיאה'));
+        }
+        return;
+      }
+      loadStats();
+    });
+  });
 }
 
 function esc(s){ return String(s == null ? '' : s).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
