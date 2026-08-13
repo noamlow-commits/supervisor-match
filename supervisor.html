@@ -502,20 +502,65 @@ const APPS_SCRIPT_URL = localStorage.getItem('apps-script-url') || 'https://scri
 const LIVE = !!APPS_SCRIPT_URL;
 const TOKEN = new URLSearchParams(location.search).get('token') || localStorage.getItem('supervisor-token') || '';
 
+/* Apps Script is genuinely unreliable, and not in a way one attempt survives:
+   successful calls measured 4-16s, and roughly one call in ten comes back as a
+   Google HTML error page instead of JSON. A single 12s try turned both of those
+   into the same silent null, which the UI then reported as a bad URL — sending
+   people to fix a setting that was never wrong. */
+const RETRYABLE_ACTIONS = new Set([
+  'verifyClassPin','verifyRegistrationCode','verifyAdminPin',
+  'getSupervisors','getSupervisor','getParameters','getAdminStats',
+  'getStudents','getUnplacedStudents','getMyPlacedStudents'
+]);
+
+let lastApiFailure = '';
+
 async function apiCall(action, params){
   if(!LIVE) return null;
-  try{
-    const url = new URL(APPS_SCRIPT_URL);
-    url.searchParams.set('action', action);
-    for(const [k,v] of Object.entries(params||{})){
-      url.searchParams.set(k, v == null ? '' : (typeof v === 'object' ? JSON.stringify(v) : v));
+  const url = new URL(APPS_SCRIPT_URL);
+  url.searchParams.set('action', action);
+  for(const [k,v] of Object.entries(params||{})){
+    url.searchParams.set(k, v == null ? '' : (typeof v === 'object' ? JSON.stringify(v) : v));
+  }
+  // Reads only. saveSupervisor/claimStudent and friends are not idempotent: a
+  // retry after a timeout on a request that actually landed would run it twice.
+  const attempts = RETRYABLE_ACTIONS.has(action) ? 3 : 1;
+  lastApiFailure = '';
+
+  for(let i = 0; i < attempts; i++){
+    if(i){
+      // A retry can take the total past a minute. Say so, or the page just freezes.
+      if(typeof onApiRetry === 'function') onApiRetry(i + 1, attempts);
+      await new Promise(res => setTimeout(res, i * 1200));
     }
     const ctrl = new AbortController();
-    const timeoutId = setTimeout(()=>ctrl.abort(), 12000);
-    const r = await fetch(url.toString(), {signal: ctrl.signal});
-    clearTimeout(timeoutId);
-    return await r.json();
-  }catch(e){ console.warn('API fail:', action, e); return null; }
+    const timeoutId = setTimeout(()=>ctrl.abort(), 30000);
+    try{
+      const r = await fetch(url.toString(), {signal: ctrl.signal});
+      const text = await r.text();
+      // Check the shape before parsing: r.json() on Google's outage page throws
+      // something opaque, and we want the retry to be a decision, not an accident.
+      const head = (text || '').trim().charAt(0);
+      if(head !== '{' && head !== '['){
+        lastApiFailure = 'server_html';
+        console.warn('API returned non-JSON:', action, r.status);
+        continue;
+      }
+      return JSON.parse(text);
+    }catch(e){
+      lastApiFailure = (e && e.name === 'AbortError') ? 'timeout' : 'network';
+      console.warn('API fail:', action, e);
+    }finally{
+      clearTimeout(timeoutId);
+    }
+  }
+  return null;
+}
+
+function apiFailureMessage(){
+  if(lastApiFailure === 'timeout')     return 'השרת איטי מהרגיל ולא הספיק לענות. נסה/נסי שוב בעוד רגע.';
+  if(lastApiFailure === 'server_html') return 'גוגל החזירה שגיאה זמנית. נסה/נסי שוב בעוד רגע.';
+  return 'לא הצלחנו להתחבר לשרת. בדוק/בדקי את החיבור לאינטרנט ונסה/נסי שוב.';
 }
 
 let profile = {

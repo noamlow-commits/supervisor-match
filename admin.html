@@ -312,20 +312,75 @@
 const APPS_SCRIPT_URL = localStorage.getItem('apps-script-url') || 'https://script.google.com/macros/s/AKfycbzWZBfLWeLQdizRbNkCsG3BgrL6SHbx5G2wERIq9-p2_Vdt09v1m1sn8gZVaeSRq3k/exec';
 const LIVE = !!APPS_SCRIPT_URL;
 
+/* Apps Script is genuinely unreliable, and not in a way one attempt survives:
+   successful calls measured 4-16s (2 of 8 over the old 12s limit), and roughly
+   one call in ten comes back as a Google HTML error page instead of JSON. A
+   single 12s try turned both of those into the same silent null, which this page
+   then reported as a bad URL — sending Tal to fix a setting that was never wrong. */
+const RETRYABLE_ACTIONS = new Set([
+  'verifyClassPin','verifyRegistrationCode','verifyAdminPin',
+  'getSupervisors','getSupervisor','getParameters','getAdminStats',
+  'getStudents','getUnplacedStudents','getMyPlacedStudents'
+]);
+
+let lastApiFailure = '';
+
 async function apiCall(action, params){
   if(!LIVE) return null;
-  try{
-    const url = new URL(APPS_SCRIPT_URL);
-    url.searchParams.set('action', action);
-    for(const [k,v] of Object.entries(params||{})){
-      url.searchParams.set(k, v == null ? '' : v);
+  const url = new URL(APPS_SCRIPT_URL);
+  url.searchParams.set('action', action);
+  for(const [k,v] of Object.entries(params||{})){
+    url.searchParams.set(k, v == null ? '' : v);
+  }
+  // Reads only, and this restriction is load-bearing: addStudent/bulkAddStudents/
+  // deleteStudent are not idempotent. A retry after a timeout on a request that
+  // actually landed would silently duplicate a student in Tal's list, and nobody
+  // would ever connect the duplicate back to a network hiccup.
+  const attempts = RETRYABLE_ACTIONS.has(action) ? 3 : 1;
+  lastApiFailure = '';
+
+  for(let i = 0; i < attempts; i++){
+    if(i){
+      // A retry can take the total past a minute. Say so, or the page just freezes.
+      if(typeof onApiRetry === 'function') onApiRetry(i + 1, attempts);
+      await new Promise(res => setTimeout(res, i * 1200));
     }
     const ctrl = new AbortController();
-    const t = setTimeout(()=>ctrl.abort(), 12000);
-    const r = await fetch(url.toString(), {signal: ctrl.signal});
-    clearTimeout(t);
-    return await r.json();
-  }catch(e){ console.warn('API fail:', action, e); return null; }
+    const t = setTimeout(()=>ctrl.abort(), 30000);
+    try{
+      const r = await fetch(url.toString(), {signal: ctrl.signal});
+      const text = await r.text();
+      // Check the shape before parsing: r.json() on Google's outage page throws
+      // something opaque, and we want the retry to be a decision, not an accident.
+      const head = (text || '').trim().charAt(0);
+      if(head !== '{' && head !== '['){
+        lastApiFailure = 'server_html';
+        console.warn('API returned non-JSON:', action, r.status);
+        continue;
+      }
+      return JSON.parse(text);
+    }catch(e){
+      lastApiFailure = (e && e.name === 'AbortError') ? 'timeout' : 'network';
+      console.warn('API fail:', action, e);
+    }finally{
+      clearTimeout(t);
+    }
+  }
+  return null;
+}
+
+function apiFailureMessage(){
+  if(lastApiFailure === 'timeout')     return 'השרת איטי מהרגיל ולא הספיק לענות. נסה/נסי שוב בעוד רגע.';
+  if(lastApiFailure === 'server_html') return 'גוגל החזירה שגיאה זמנית. נסה/נסי שוב בעוד רגע.';
+  return 'לא הצלחנו להתחבר לשרת. בדוק/בדקי את החיבור לאינטרנט ונסה/נסי שוב.';
+}
+
+// The backend can be a version behind the page (Apps Script is deployed by hand,
+// so a pushed commit is not a live one). Say that, instead of "failed".
+function actionErrorText(r, fallback){
+  if(r && r.error === 'unknown_action') return 'הפעולה לא קיימת בשרת — נדרש Redeploy של ה-Apps Script.';
+  if(!r) return apiFailureMessage();
+  return fallback + (r.message ? r.message : r.error || 'שגיאה');
 }
 
 /* ===== PIN Gate ===== */
@@ -372,10 +427,18 @@ async function loadStats(){
 
   const r = await apiCall('getAdminStats', {adminPin: pin});
   if(!r || r.error){
-    showErr(r && r.message ? r.message : 'שגיאה בטעינת נתונים. בדוק/בדקי את ה-URL בהגדרות.');
+    showErr(actionErrorText(r, 'טעינת הנתונים נכשלה: '));
     return;
   }
   renderStats(r);
+  // A retry notice may be on screen from a slow attempt that then succeeded.
+  document.getElementById('errBanner').classList.remove('show');
+}
+
+// Called by apiCall between attempts. A recovered call was measured at 75s in
+// testing; without this the page just sits there and looks broken.
+function onApiRetry(attempt, total){
+  showErr(`השרת איטי כרגע — מנסה שוב (${attempt} מתוך ${total})…`);
 }
 
 function showErr(msg){
@@ -529,7 +592,7 @@ function renderStudents(students, supervisors){
       const r = await apiCall('updateStudent', {adminPin: sessionStorage.getItem('admin-pin') || '', id, placedWith});
       e.target.disabled = false;
       if(!r || r.error){
-        showErr('עדכון השיבוץ נכשל: ' + (r && r.message ? r.message : (r && r.error) || 'שגיאה'));
+        showErr(actionErrorText(r, 'עדכון השיבוץ נכשל: '));
         return;
       }
       loadStats();
@@ -552,7 +615,7 @@ function renderStudents(students, supervisors){
       const r = await apiCall('deleteStudent', {adminPin: sessionStorage.getItem('admin-pin') || '', id});
       if(!r || r.error){
         btn.disabled = false;
-        showErr('מחיקה נכשלה: ' + (r && r.message ? r.message : (r && r.error) || 'שגיאה'));
+        showErr(actionErrorText(r, 'מחיקה נכשלה: '));
         return;
       }
       loadStats();
@@ -687,7 +750,7 @@ function wireSupervisorActions(c){
         if(r && r.error === 'has_placed_students'){
           showErr(`${name}: ${r.message}\nתלמידים: ${(r.students||[]).join(', ')}`);
         }else{
-          showErr('הפעולה נכשלה: ' + (r && r.message ? r.message : (r && r.error) || 'שגיאה'));
+          showErr(actionErrorText(r, 'הפעולה נכשלה: '));
         }
         return;
       }
@@ -748,7 +811,7 @@ async function addOneStudent(){
   const r = await apiCall('addStudent', {adminPin: sessionStorage.getItem('admin-pin') || '', fullName: name, email, phone});
   btn.disabled = false;
   if(!r || r.error){
-    showErr('הוספת תלמיד נכשלה: ' + (r && r.message ? r.message : (r && r.error) || 'שגיאה'));
+    showErr(actionErrorText(r, 'הוספת תלמיד נכשלה: '));
     return;
   }
   document.getElementById('newStudentName').value = '';
@@ -790,7 +853,7 @@ async function bulkAddStudentsAction(){
   const r = await apiCall('bulkAddStudents', {adminPin: sessionStorage.getItem('admin-pin') || '', names: text});
   btn.disabled = false; btn.textContent = 'הוסף את כולם';
   if(!r || r.error){
-    showErr('הוספה נכשלה: ' + (r && r.message ? r.message : (r && r.error) || 'שגיאה'));
+    showErr(actionErrorText(r, 'הוספה נכשלה: '));
     return;
   }
   document.getElementById('bulkText').value = '';
