@@ -48,6 +48,18 @@ var SCHEMA = [
   {key:'email',         header:'דואל',            type:'string', group:'קשר'},
   {key:'city',          header:'מגורים',          type:'string', group:'קשר'},
   {key:'occupation',    header:'עיסוק',           type:'string', group:'קשר'},
+  // הערות אישיות חופשיות על האדם (בקשת טל 9.8.26: "אם יש לי הערות אישיות על
+  // הבנאדם, למשל זכאי להנחה"). משתמש בעמודה 'הערת פעולה' שכבר קיימת בגיליון
+  // ומעולם לא רונדרה — לכן אין צורך בהגירת נתונים. ה-header לא משתנה לעולם
+  // (שינוי header מנתק את העמודה מהנתונים); רק ה-label לתצוגה.
+  {key:'actionNote',    header:'הערת פעולה',      type:'string', group:'קשר',   aug:true,
+                        label:'הערות אישיות (למשל: זכאי להנחה)'},
+  // יצירת קשר — הצעדים הראשונים במשפך. הועברו לכאן 13.8.26: הם היו קבורים בתוך
+  // קבוצת 'תהליך' יחד עם הראיון, ויושבים אחרי המסמכים ודמי ההרשמה — כלומר
+  // הכרטיס לא זרם לפי סדר העבודה בפועל. טל: "פרטים מיותרים או לא לפי הסדר".
+  {key:'materialSent',  header:'נשלח חומר',       type:'bool',   group:'יצירת קשר', label:'נוצר קשר ונשלח חומר'},
+  {key:'materialDate',  header:'תאריך חומר',      type:'date',   group:'יצירת קשר'},
+  {key:'spoke',         header:'שוחחנו',          type:'bool',   group:'יצירת קשר'},
   // סף קבלה
   {key:'hasMA',         header:'תואר שני',        type:'bool',   group:'סף קבלה'},
   {key:'has2yrs',       header:'ניסיון שנתיים',   type:'bool',   group:'סף קבלה'},
@@ -60,26 +72,33 @@ var SCHEMA = [
   {key:'docPassport',   header:'פספורט (לא חובה)',type:'bool',   group:'מסמכים'},
   {key:'docRec1',       header:'המלצה 1',         type:'bool',   group:'מסמכים'},
   {key:'docRec2',       header:'המלצה 2',         type:'bool',   group:'מסמכים'},
+  // ⚠ דור ישן של מעקב מסמכים, שחי במקביל לצ'ק-ליסט שמעליו. מדידת הנתונים
+  // (13.8.26) מצאה 68 זוגות עמודות שמתנהגות זהה לחלוטין — הכפילות הזאת היא
+  // חלק ממה שגרם ל"צריך ממש לעבור שם סעיף סעיף". מוסתר כעת בהדיאלוגי ובתעודה,
+  // אך נשאר בסכימה כדי לא לנתק את הנתונים ההיסטוריים, ומקובץ בנפרד כדי
+  // שהכפילות תהיה גלויה לעין ותהיה ניתנת לחיסול מסודר בהמשך.
+  {key:'regForm',       header:'טופס הרשמה',      type:'bool',   group:'מסמכים (ישן)'},
+  {key:'certDocs',      header:'מסמכי תעודות',    type:'bool',   group:'מסמכים (ישן)'},
+  {key:'recommend',     header:'המלצות',          type:'string', group:'מסמכים (ישן)'},
+  {key:'missingForms',  header:'טפסים חסרים',     type:'string', group:'מסמכים (ישן)'},
+  // דמי הרשמה — בקשת טל 10.8.26: "שהתשלום של דמי ההרשמה יהיה יותר קרוב לאזור
+  // שמסמנים את המסמכים שהושלמו (דמי הרשמה כמו המסמכים נמצא בשלב שלפני ראיון)".
+  // ⚠ קבוצה נפרדת ולא הכנסה לתוך 'מסמכים' בכוונה: ב'תעודה' הקבוצה 'מסמכים'
+  // מוסתרת כולה (PROGRAM_CARD_HIDE), ו-payReg הוא עוגן ההרשמה של 'תעודה'
+  // (PROGRAM_REG_ANCHOR) — מיזוג היה מעלים לה את השדה ושובר את סימון אבן-הדרך.
+  {key:'payReg',        header:'דמי הרשמה שולם',  type:'bool',   group:'דמי הרשמה'},
+  {key:'payRegSum',     header:'דמי הרשמה סכום',  type:'number', group:'דמי הרשמה'},
+  {key:'payRegDate',    header:'דמי הרשמה תאריך', type:'date',   group:'דמי הרשמה'},
+  {key:'payRegRcpt',    header:'דמי הרשמה קבלה',  type:'string', group:'דמי הרשמה'},
   // התלבטות — שתי נקודות התלבטות (טקסט חופשי). aug=true: לא נדרס בייבוא.
   {key:'delibEarly',    header:'התלבטות (שיחה←הרשמה)',  type:'string', group:'התלבטות', aug:true},
   {key:'delibLate',     header:'התלבטות (קבלה←מקדמה)',  type:'string', group:'התלבטות', aug:true},
-  // תהליך
-  {key:'materialSent',  header:'נשלח חומר',       type:'bool',   group:'תהליך', label:'נוצר קשר ונשלח חומר'},
-  {key:'materialDate',  header:'תאריך חומר',      type:'date',   group:'תהליך'},
-  {key:'spoke',         header:'שוחחנו',          type:'bool',   group:'תהליך'},
-  {key:'regForm',       header:'טופס הרשמה',      type:'bool',   group:'תהליך'},
-  {key:'certDocs',      header:'מסמכי תעודות',    type:'bool',   group:'תהליך'},
-  {key:'recommend',     header:'המלצות',          type:'string', group:'תהליך'},
-  {key:'missingForms',  header:'טפסים חסרים',     type:'string', group:'תהליך'},
-  {key:'interview',     header:'מצב ראיון',       type:'string', group:'תהליך', options:['לא נקבע','נקבע','בוצע','התקבל','נדחה']},
-  {key:'interviewer',   header:'מראיין',          type:'string', group:'תהליך'},
-  {key:'interviewDate', header:'תאריך ראיון',     type:'date',   group:'תהליך'},
-  // תשלומים
-  {key:'payInterview',  header:'דמי ראיון שולם',  type:'bool',   group:'תשלומים'},
-  {key:'payReg',        header:'דמי הרשמה שולם',  type:'bool',   group:'תשלומים'},
-  {key:'payRegSum',     header:'דמי הרשמה סכום',  type:'number', group:'תשלומים'},
-  {key:'payRegDate',    header:'דמי הרשמה תאריך', type:'date',   group:'תשלומים'},
-  {key:'payRegRcpt',    header:'דמי הרשמה קבלה',  type:'string', group:'תשלומים'},
+  // ריאיון — כולל דמי הראיון, ששייכים לרגע הזה במשפך ולא לגוש התשלומים שבסוף.
+  {key:'payInterview',  header:'דמי ראיון שולם',  type:'bool',   group:'ריאיון'},
+  {key:'interview',     header:'מצב ראיון',       type:'string', group:'ריאיון', options:['לא נקבע','נקבע','בוצע','התקבל','נדחה']},
+  {key:'interviewer',   header:'מראיין',          type:'string', group:'ריאיון'},
+  {key:'interviewDate', header:'תאריך ראיון',     type:'date',   group:'ריאיון'},
+  // תשלומים — מה שקורה אחרי הראיון. (payReg עבר ל'דמי הרשמה' ליד המסמכים.)
   {key:'payDeposit',    header:'מקדמה שולם',      type:'bool',   group:'תשלומים'},
   {key:'payDepositSum', header:'מקדמה סכום',      type:'number', group:'תשלומים'},
   {key:'payDepositDate',header:'מקדמה תאריך',     type:'date',   group:'תשלומים'},
@@ -104,7 +123,7 @@ var SCHEMA = [
   // מטא / הרחבות אפליקציה (לא נדרסות בייבוא)
   {key:'source',        header:'מקור',            type:'string', group:'מטא',   aug:true},
   {key:'snoozeUntil',   header:'דחיית תזכורת עד', type:'date',   group:'מטא',   aug:true},
-  {key:'actionNote',    header:'הערת פעולה',      type:'string', group:'מטא',   aug:true},
+  // ('הערת פעולה' עברה לקבוצה 'קשר' כשדה ההערות האישיות — ראו למעלה)
   // מיקום ידני בלוח (נקבע בגרירה). aug + group מטא → מוסתר מהטופס, נשמר בייבוא.
   {key:'boardStage',    header:'עמודת לוח',       type:'string', group:'מטא',   aug:true},
   // מתי הפנייה נכנסה לשלב הנוכחי — לחישוב התיישנות (מסגרות 5/10 ימים). מתעדכן בתזוזת שלב.
@@ -137,12 +156,35 @@ var STAGE_REQUIRES = {
 // groups = קבוצות שלמות להסתרה בטופס · keys = שדות בודדים להסתרה.
 // שדה מוסתר פשוט אינו נרנדר ואינו נאסף — אינו נמחק (הערך הקיים נשמר).
 var PROGRAM_CARD_HIDE = {
+  // הדיאלוגי (13.8.26) — צמצום שנשען על מדידה של הגיליון החי, לא על הערכה.
+  // ⚠ הכלל שהנחה את הבחירה: שדה ריק אינו בהכרח שדה מיותר. טל הקלידה 9 פניות
+  // בהדיאלוגי, וכולן מוקדמות במשפך — ולכן שדות של סוף המשפך (מקדמה, שכ"ל,
+  // מכתב תוצאה, תאריך ראיון) מראים 0% מפני שאיש לא הגיע אליהם, לא מפני
+  // שאינם נחוצים. הם נשארים. הוסתר כאן רק מה שכפול, קבוע, או מעולם לא הוזן.
+  // ⚠⚠ payDeposit נשאר גלוי בכוונה למרות 0% — הוא עוגן ההרשמה של הדיאלוגי
+  // (PROGRAM_REG_ANCHOR); הסתרתו הייתה מונעת מטל לסמן נרשם בתוכנית המרכזית.
+  'הדיאלוגי': {
+    groups: ['מסמכים (ישן)', 'מחושב'],
+    keys: ['cycle',        // 0/9 — היבואן ממלא, 37 מתוך 39 הערכים זהים ("תשפז")
+           'crmCode',      // 0/9 — מגיע מהיבוא בלבד
+           'pastStudent',  // FALSE ב-69 רשומות, מעולם לא סומן
+           'noInterest',   // ריק בכל 133 הרשומות
+           'delibLate',    // ריק בכל 133; התאום שלו (delibEarly) כן בשימוש ונשאר
+           'needsMoodle']  // שייך לקורסים, לא למשפך
+    // ⚠ 'discountForm' הוצע להסתרה (FALSE ב-69 רשומות) ונשאר גלוי בכוונה,
+    // בהחלטת נועם 13.8.26: אחרי שהצמצום של יולי הסתיר את שדות ההנחה והתברר
+    // שדווקא אותם טל צריכה, ההטיה בכל מה שנוגע להנחות היא לכיוון השארה.
+    // 'אחוז הנחה' (discountPct) הוא שדה שרק טל נוגעת בו — 3 רשומות, אפס מהיבואנים.
+  },
   'תעודה': {
     groups: ['סף קבלה', 'מסמכים', 'התלבטות', 'מחושב'],
+    // ⚠ discountForm/discountPct הוסתרו כאן בצמצום של 6.7.26 — וזו הייתה חיתוך יתר:
+    // טל דיווחה (9.8.26) שהיא צריכה לרשום "זכאי להנחה", והשדות שנועדו בדיוק לכך
+    // כבר לא היו על הכרטיס שלה. הוחזרו 13.8.26 לבקשת נועם.
     keys: ['regForm', 'certDocs', 'recommend', 'missingForms', 'resultLetter',
            'needsMoodle', 'payInterview',
            'payDeposit', 'payDepositSum', 'payDepositDate',
-           'payTuition', 'payTuitionSum', 'discountForm', 'discountPct']
+           'payTuition', 'payTuitionSum']
   }
 };
 

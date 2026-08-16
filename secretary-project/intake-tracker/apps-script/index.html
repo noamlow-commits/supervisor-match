@@ -569,8 +569,12 @@ function buildModal(rec, isNew){
   }
   // בקרת שלב בכרטיס — כמו גרירה: אפשר לשנות ידנית, עם אזהרה אם דילגת על שלב.
   if (!isNew && rec.recordType==='פנייה'){
-    var sf = DATA.funnels && DATA.funnels[canonProg(rec.program)];
-    if (sf){
+    // אותו משפך שהלוח משתמש בו — כולל נפילה למשפך הגנרי לתוכנית לא-מזוהה.
+    // קודם נבדק כאן DATA.funnels ישירות (3 תוכניות בלבד), ולכן כרטיס עם תוכנית
+    // לא-קנונית או ריקה קיבל עמודות בלוח אבל שום בורר שלב בכרטיס — וזה בדיוק
+    // המצב שבו אי-אפשר לגרור, כלומר בדיוק הכרטיס שהבורר נועד להציל.
+    var sf = cardFunnel(rec.program);
+    if (sf && sf.length){
       var curStage = (rec.boardStage && sf.indexOf(rec.boardStage)>=0) ? rec.boardStage : rec.stage;
       var opts = sf.slice(); if (String(rec.stage||'').indexOf('✗')>=0 && opts.indexOf('✗ סגור')<0) opts.push('✗ סגור');
       html += '<div class="grp"><h4>שלב במשפך</h4>'+
@@ -584,7 +588,7 @@ function buildModal(rec, isNew){
     html += '<div class="grp"><h4>'+esc(g)+'</h4><div class="fields">';
     groups[g].forEach(function(c){
       var v = rec[c.key]; v = (v===undefined||v===null)?'':v;
-      var full = (c.type==='string'&&['recommend','missingForms','noInterest','crmNote','payNote','delibEarly','delibLate'].indexOf(c.key)>=0)?' full':'';
+      var full = (c.type==='string'&&['recommend','missingForms','noInterest','crmNote','payNote','delibEarly','delibLate','actionNote'].indexOf(c.key)>=0)?' full':'';
       var dis = c.computed?' disabled':'';
       var lbl = esc(c.label||c.header);
       if (c.key==='program'){
