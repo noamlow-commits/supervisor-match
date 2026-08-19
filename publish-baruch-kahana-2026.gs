@@ -27,7 +27,7 @@
  */
 function publishBaruchKahana() {
   var TARGET_NAME  = 'ד"ר ברוך כהנא';
-  var TARGET_EMAIL = 'kahanabh@gmail.com';
+  var TARGET_EMAIL = 'REDACTED@example.com';
 
   var sheet = getOrCreateSupervisorsSheet();
   var data = sheet.getDataRange().getValues();

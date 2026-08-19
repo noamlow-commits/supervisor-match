@@ -1430,27 +1430,31 @@ function sendClaimEmail(toEmail, name, baseUrl) {
  * imported is left FALSE; autoPublish is FALSE — supervisor reviews and
  * publishes from claim.html.
  */
+// ⚠ פרטי הקשר הוסרו מהריפו (19.8.26) — הריפו ציבורי. הפונקציה הזאת רצה
+// פעם אחת במאי 2026 והנתונים שלה ממילא כבר לא סמכותיים (למשל היא מחזיקה
+// לנריה קרין מספר שונה מזה שבמסמך של טל). מקור האמת הוא לשונית Supervisors
+// בגיליון. אם צריך לזרוע מחדש — למלא מהגיליון, לא מכאן.
 function seedHadialogyDirectory() {
   const seedRows = [
     // From hadialogy/#9 (צוות מקצועי + צוות עמיתי הוראה)
-    { fullName: 'ד"ר ברוך כהנא',          email: 'kahanabh@gmail.com',           credential: 'פסיכולוג קליני מומחה' },
-    { fullName: 'ד"ר יפעה מליק-גרינברג',  email: 'yifaor@walla.com',             credential: 'פסיכיאטרית מתמחה' },
-    { fullName: 'ד"ר קארן לרנר',          email: 'karenlmt5@gmail.com',          credential: 'פסיכולוגית קלינית' },
-    { fullName: 'איתן כלפה',              email: 'eitan.calfa@mail.huji.ac.il',  credential: 'פסיכולוג קליני מומחה - מדריך' },
-    { fullName: 'גבריאל פרץ',             email: 'gabrielperetz@gmail.com',      credential: 'פסיכולוג קליני מדריך' },
-    { fullName: 'נעמי אשואל',             email: 'naomiashwal7@gmail.com',       credential: 'פסיכולוגית קלינית, חינוכית ומדריכה' },
-    { fullName: 'ד"ר חגי סרי',            email: 'hagai.s@meuhedet.co.il',       credential: 'פסיכולוג קליני מומחה' },
-    { fullName: 'ד"ר נילי פויירשטיין',    email: 'fnili175@gmail.com',           credential: 'פסיכולוגית ועו"ס קלינית' },
-    { fullName: 'חנה יאיר בוריה',         email: 'Ybhana@gmail.com',             credential: 'עו"ס פסיכותרפיסטית, מדריכה בטיפול זוגי' },
-    { fullName: 'נועם לב',                email: 'noamlow@gmail.com',            credential: 'פסיכולוג קליני מומחה' },
-    { fullName: 'אבי יעקובסון',           email: 'Aviyacobson@gmail.com',        credential: 'פסיכולוג קליני מומחה' },
-    { fullName: 'בנימין גולדנהירש',       email: 'benjaminfranklin1@gmail.com',  credential: 'פסיכולוג קליני וחינוכי – מדריך' },
+    { fullName: 'ד"ר ברוך כהנא',          email: 'REDACTED@example.com',           credential: 'פסיכולוג קליני מומחה' },
+    { fullName: 'ד"ר יפעה מליק-גרינברג',  email: 'REDACTED@example.com',             credential: 'פסיכיאטרית מתמחה' },
+    { fullName: 'ד"ר קארן לרנר',          email: 'REDACTED@example.com',          credential: 'פסיכולוגית קלינית' },
+    { fullName: 'איתן כלפה',              email: 'REDACTED@example.com',  credential: 'פסיכולוג קליני מומחה - מדריך' },
+    { fullName: 'גבריאל פרץ',             email: 'REDACTED@example.com',      credential: 'פסיכולוג קליני מדריך' },
+    { fullName: 'נעמי אשואל',             email: 'REDACTED@example.com',       credential: 'פסיכולוגית קלינית, חינוכית ומדריכה' },
+    { fullName: 'ד"ר חגי סרי',            email: 'REDACTED@example.com',       credential: 'פסיכולוג קליני מומחה' },
+    { fullName: 'ד"ר נילי פויירשטיין',    email: 'REDACTED@example.com',           credential: 'פסיכולוגית ועו"ס קלינית' },
+    { fullName: 'חנה יאיר בוריה',         email: 'REDACTED@example.com',             credential: 'עו"ס פסיכותרפיסטית, מדריכה בטיפול זוגי' },
+    { fullName: 'נועם לב',                email: 'REDACTED@example.com',            credential: 'פסיכולוג קליני מומחה' },
+    { fullName: 'אבי יעקובסון',           email: 'REDACTED@example.com',        credential: 'פסיכולוג קליני מומחה' },
+    { fullName: 'בנימין גולדנהירש',       email: 'REDACTED@example.com',  credential: 'פסיכולוג קליני וחינוכי – מדריך' },
     // From bogrim_h.php (no photo, but we have phone + area + role)
-    { fullName: 'נריה קרין',              email: 'neriakarin@gmail.com',         credential: 'עו"ס קלינית, פסיכואנליטיקאית', orientations: 'דינאמי', phone: '0507724704', area: 'שרון' },
-    { fullName: 'אפרת ברום',              email: 'efratbrom@gmail.com',          credential: '',                            phone: '0527906319', area: 'שילה' },
+    { fullName: 'נריה קרין',              email: 'REDACTED@example.com',         credential: 'עו"ס קלינית, פסיכואנליטיקאית', orientations: 'דינאמי', phone: '05XXXXXXXX', area: 'שרון' },
+    { fullName: 'אפרת ברום',              email: 'REDACTED@example.com',          credential: '',                            phone: '05XXXXXXXX', area: 'שילה' },
     // Not found on either site — name+email only, supervisor fills the rest in claim
-    { fullName: 'טליק לרנר',              email: 'taliklerner@gmail.com' },
-    { fullName: 'דני קורנבליט',           email: 'donnyk23@gmail.com' }
+    { fullName: 'טליק לרנר',              email: 'REDACTED@example.com' },
+    { fullName: 'דני קורנבליט',           email: 'REDACTED@example.com' }
   ];
 
   const bulkSheet = getOrCreateBulkImportSheet();

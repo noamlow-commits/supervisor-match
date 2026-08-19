@@ -14,7 +14,7 @@ function setYifaConsultation() {
   ensureCardTypeColumn();
 
   var TOKEN = 'w8hp3udsj56sng';
-  var EMAIL = 'yifaor@walla.com';
+  var EMAIL = 'REDACTED@example.com';
 
   var sheet = getOrCreateSupervisorsSheet();
   var values = sheet.getDataRange().getValues();

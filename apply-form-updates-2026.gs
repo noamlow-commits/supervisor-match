@@ -20,7 +20,7 @@
  * Notes baked in (change here if you disagree):
  *   - נריה קרין: hasSpot=false  — wrote "כבר מדריכה 2, אקלוט רק אם יסיימו".
  *   - מני פולק:  create:true     — no existing card; creates a DRAFT (published=false)
- *                                  with phone 0545291780. Email still missing — add it
+ *                                  with phone 05XXXXXXXX. Email still missing — add it
  *                                  before publishing / sending a claim mail.
  *   - Weekly-availability free text has NO structured field (it's a JSON grid the
  *     supervisor edits in the UI), so it is NOT written here. See the table Noam has
@@ -112,7 +112,7 @@ function applyFormUpdates2026() {
       area: 'קליניקה בקטמונים',
       hasSpot: false,
       maxStudents: 1,
-      phone: '0545291780'   // email still missing — card stays a draft until added
+      phone: '05XXXXXXXX'   // email still missing — card stays a draft until added
     }
   ];
 

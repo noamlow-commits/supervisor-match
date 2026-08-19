@@ -14,19 +14,19 @@
  *
  * ── WHAT IT DOES ──────────────────────────────────────────────────────────
  *   • ADD       — row has no phone      → writes the phone from the doc
- *   • NORMALIZE — row has the SAME number in a messy form ("⁦+972 52-379-7343⁩",
+ *   • NORMALIZE — row has the SAME number in a messy form ("⁦05XXXXXXXX⁩",
  *                 stray bidi marks, spaces, dashes) → rewrites it as 05XXXXXXXX
  *   • CONFLICT  — row has a DIFFERENT number → left untouched, reported. A human
  *                 decides. Nothing is ever silently overwritten.
  *   • NOT FOUND — no row matched that person → reported, no row is created.
  *
  * Phones are written with number-format '@' (text) so the leading zero survives
- * — Sheets otherwise turns "0523797343" into the number 523797343 and the
+ * — Sheets otherwise turns "05XXXXXXXX" into the number 523797343 and the
  * student page's wa.me / tel: links break. See feedback_sheets_phone_format.
  *
  * ── TWO JUDGEMENT CALLS, DECIDED BY NOAM 2026-08-02 ───────────────────────
- *   אפרת ברום — the doc lists "052790631" = 9 digits; an Israeli mobile is 10.
- *     Resolved: use "0527906319" from the old seedHadialogyDirectory data (the
+ *   אפרת ברום — the doc lists "05XXXXXXXX" = 9 digits; an Israeli mobile is 10.
+ *     Resolved: use "05XXXXXXXX" from the old seedHadialogyDirectory data (the
  *     doc's number + the trailing 9 it evidently lost). Noam's call.
  *
  *   ד"ר קארן לרנר — her card is a published row with EVERY field blank except
@@ -52,34 +52,34 @@ var NORMALIZE_EXISTING = true;
 // empty fullName AND its phone matches ORPHAN_CARD_PHONE. All three, so this
 // can never wander onto a real profile.
 var UNPUBLISH_ORPHAN_CARD = true;
-var ORPHAN_CARD_PHONE = '0506555875';
+var ORPHAN_CARD_PHONE = '05XXXXXXXX';
 
 /* ===================== DATA FROM THE DOC ===================== */
 // phone = local Israeli form, digits only, leading 0.
 // name/email are matching keys only — never written.
 var PHONE_ROSTER_2026 = [
-  { name: 'ד"ר ברוך כהנא',        email: 'kahanabh@gmail.com',            phone: '0507448901' },
+  { name: 'ד"ר ברוך כהנא',        email: 'REDACTED@example.com',            phone: '05XXXXXXXX' },
   // Expected to log as NOT FOUND — her row has no name and no email to match on.
   // It is handled separately by unpublishOrphanCard_() instead. Kept here so the
   // roster stays a faithful copy of the doc.
-  { name: 'ד"ר קארן לרנר',        email: 'karenlmt5@gmail.com',           phone: '0506555875' },
-  { name: 'איתן כלפה',            email: 'eitan.calfa@mail.huji.ac.il',   phone: '0523797343' },
-  { name: 'גבריאל פרץ',           email: 'gabrielperetz@gmail.com',       phone: '0529205282' },
-  { name: 'נעמי אשואל',           email: 'naomiashwal7@gmail.com',        phone: '0523512887' },
-  { name: 'ד"ר חגי סרי',          email: 'hagai.s@meuhedet.co.il',        phone: '0507259067' },
-  { name: 'ד"ר נילי פויירשטיין',  email: 'fnili175@gmail.com',            phone: '0522975356' },
-  { name: 'חנה יאיר בוריה',       email: 'ybhana@gmail.com',              phone: '0537921745' },
-  { name: 'נריה קרין',            email: 'neriakarin@gmail.com',          phone: '0505730517' },
-  { name: 'נועם לב',              email: 'noamlow@gmail.com',             phone: '0548317031' },
-  { name: 'טליק לרנר',            email: 'taliklerner@gmail.com',         phone: '0502199179' },
-  { name: 'מני פולק',             email: 'manipollak@gmail.com',          phone: '0545291780' },
-  { name: 'אבי יעקובסון',         email: 'aviyacobson@gmail.com',         phone: '0526021603' },
-  { name: 'דני קורנבליט',         email: 'donnyk23@gmail.com',            phone: '0547407172' },
-  { name: 'בנימין גולדנהירש',     email: 'benjaminfranklin1@gmail.com',   phone: '0507240873' },
-  { name: 'סלעית בן דרור',        email: 'salitnehara@gmail.com',         phone: '0509166762' },
-  // Doc says "052790631" (9 digits — a digit was lost). Noam ruled 2026-08-02 to
-  // trust the older seedHadialogyDirectory value "0527906319" instead.
-  { name: 'אפרת ברום',            email: 'efratbrom@gmail.com',           phone: '0527906319' }
+  { name: 'ד"ר קארן לרנר',        email: 'REDACTED@example.com',           phone: '05XXXXXXXX' },
+  { name: 'איתן כלפה',            email: 'REDACTED@example.com',   phone: '05XXXXXXXX' },
+  { name: 'גבריאל פרץ',           email: 'REDACTED@example.com',       phone: '05XXXXXXXX' },
+  { name: 'נעמי אשואל',           email: 'REDACTED@example.com',        phone: '05XXXXXXXX' },
+  { name: 'ד"ר חגי סרי',          email: 'REDACTED@example.com',        phone: '05XXXXXXXX' },
+  { name: 'ד"ר נילי פויירשטיין',  email: 'REDACTED@example.com',            phone: '05XXXXXXXX' },
+  { name: 'חנה יאיר בוריה',       email: 'REDACTED@example.com',              phone: '05XXXXXXXX' },
+  { name: 'נריה קרין',            email: 'REDACTED@example.com',          phone: '05XXXXXXXX' },
+  { name: 'נועם לב',              email: 'REDACTED@example.com',             phone: '05XXXXXXXX' },
+  { name: 'טליק לרנר',            email: 'REDACTED@example.com',         phone: '05XXXXXXXX' },
+  { name: 'מני פולק',             email: 'REDACTED@example.com',          phone: '05XXXXXXXX' },
+  { name: 'אבי יעקובסון',         email: 'REDACTED@example.com',         phone: '05XXXXXXXX' },
+  { name: 'דני קורנבליט',         email: 'REDACTED@example.com',            phone: '05XXXXXXXX' },
+  { name: 'בנימין גולדנהירש',     email: 'REDACTED@example.com',   phone: '05XXXXXXXX' },
+  { name: 'סלעית בן דרור',        email: 'REDACTED@example.com',         phone: '05XXXXXXXX' },
+  // Doc says "05XXXXXXXX" (9 digits — a digit was lost). Noam ruled 2026-08-02 to
+  // trust the older seedHadialogyDirectory value "05XXXXXXXX" instead.
+  { name: 'אפרת ברום',            email: 'REDACTED@example.com',           phone: '05XXXXXXXX' }
   // ד"ר יפעה מליק גרינברג — no phone in the doc (consultation card).
 ];
 
@@ -217,7 +217,7 @@ function unpublishOrphanCard_(sheet, data, col, dryRun, iso) {
 
 /* ========================= helpers ========================= */
 
-// Write as TEXT so Sheets keeps the leading zero (0523797343, not 523797343).
+// Write as TEXT so Sheets keeps the leading zero (05XXXXXXXX, not 523797343).
 function writePhone_(sheet, rowNum, phoneColIdx, value) {
   var cell = sheet.getRange(rowNum, phoneColIdx + 1);
   cell.setNumberFormat('@');
@@ -233,7 +233,7 @@ function digitsOnly_(v) {
 }
 
 // Reduce any written form to the canonical local one: 05XXXXXXXX.
-// Handles "+972 52-379-7343", "972523797343", "523797343" (zero eaten by Sheets),
+// Handles "05XXXXXXXX", "972523797343", "523797343" (zero eaten by Sheets),
 // and stray bidi isolates (U+2066/U+2069) that the doc's numbers carry.
 function normalizeIsraeliDigits_(v) {
   var d = digitsOnly_(v);

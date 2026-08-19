@@ -130,8 +130,8 @@ function auditNormName_(v) {
     .trim();
 }
 
-// Phone key: reduce every written form to local 05XXXXXXXX so "050-744-8901",
-// "⁦+972 50-744-8901⁩" and 507448901 all collapse to one value.
+// Phone key: reduce every written form to local 05XXXXXXXX so "05XXXXXXXX",
+// "⁦05XXXXXXXX⁩" and 507448901 all collapse to one value.
 function auditNormPhone_(v) {
   var d = String(v == null ? '' : v).replace(/\D/g, '');
   if (!d) return '';

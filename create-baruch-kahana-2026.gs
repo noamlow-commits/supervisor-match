@@ -35,8 +35,8 @@ function createBaruchKahana() {
     credential: 'פסיכולוג קליני, מרצה באוניברסיטה העברית בבית הספר לעבודה סוציאלית, ' +
                 'בכיר במכון רוטנברג — המרכז לפסיכולוגיה דיאלוגית, מדריך מוסמך, חבר המכון היונגיאני',
     area: 'גוש עציון / נווה דניאל',
-    email: 'kahanabh@gmail.com',
-    phone: '0507448901'
+    email: 'REDACTED@example.com',
+    phone: '05XXXXXXXX'
     // yearsSupervising / orientations / populations / styleText / format / maxStudents
     // are intentionally left empty — see the header. He fills them in himself.
   };

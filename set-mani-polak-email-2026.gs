@@ -2,8 +2,8 @@
  * One-time fixup — adds מני פולק's email to his existing DRAFT card.
  *
  * Background: applyFormUpdates2026() created מני פולק as a DRAFT (published=false)
- * with phone 0545291780 but NO email, because the form didn't include it. Noam
- * supplied it afterwards: manipollak@gmail.com.
+ * with phone 05XXXXXXXX but NO email, because the form didn't include it. Noam
+ * supplied it afterwards: REDACTED@example.com.
  *
  * This writes ONLY the email field (+ updated timestamp) onto his row, matched by
  * exact fullName 'מני פולק'. It does NOT publish the card and does NOT send a mail —
@@ -14,7 +14,7 @@
  */
 function setManiPolakEmail() {
   var TARGET_NAME = 'מני פולק';
-  var EMAIL       = 'manipollak@gmail.com';
+  var EMAIL       = 'REDACTED@example.com';
 
   // Optional follow-ups — flip to true if you want them done in the same run:
   var ALSO_PUBLISH    = false;  // set published=true so the card becomes student-visible
