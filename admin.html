@@ -113,6 +113,46 @@
   tr.sup-section-header.no-spot-header td{background:#fef2f2;color:#9b1c1c;border-top-color:#fca5a5}
   tr.sup-section-header.draft-header td{background:#fafafa;color:var(--ink-soft);border-top-color:#d4d4d4}
 
+  /* מסנן שנת לימוד — בקשת טל 19.8.26: לראות אילו תלמידים בכל שנה */
+  .year-filter{display:flex;flex-wrap:wrap;gap:6px;padding:0 22px 14px}
+  .year-chip{padding:6px 13px;border-radius:999px;font-size:13px;background:var(--bg);
+    color:var(--ink-soft);border:1.5px solid transparent;font-weight:500;transition:all .15s}
+  .year-chip:hover{border-color:var(--border)}
+  .year-chip.active{background:var(--accent-soft);color:var(--accent-strong);border-color:var(--accent);font-weight:600}
+  .year-chip .n{opacity:.65;margin-inline-start:4px;font-size:12px}
+  /* ⭐ פלטת שנים. שלושה גוונים מובחנים שאינם ירוק/ענבר/אדום/אפור — הגוונים
+     האלה כבר תפוסים לסטטוס (שובץ/ממתין/מלא), וצבע שנה בגוון כזה היה נקרא
+     כמצב שיבוץ. הצבע נבחר לפי מספר השנה ולא לפי גיבוב של המחזור: גיבוב נותן
+     גוונים דומים מדי (נלמד בפרויקט מעקב הפניות). */
+  :root{
+    --y1:#2563eb; --y1-bg:#dbeafe;   /* שנה א — כחול   */
+    --y2:#7c3aed; --y2-bg:#ede9fe;   /* שנה ב — סגול   */
+    --y3:#0e7490; --y3-bg:#cffafe;   /* שנה ג — טורקיז */
+  }
+  .year-tag{display:inline-block;font-size:12px;padding:3px 10px;border-radius:6px;
+    font-weight:700;white-space:nowrap;background:#eef2ee;color:#3f5b48}
+  .year-tag.y1{background:var(--y1-bg);color:var(--y1)}
+  .year-tag.y2{background:var(--y2-bg);color:var(--y2)}
+  .year-tag.y3{background:var(--y3-bg);color:var(--y3)}
+  .year-tag.none{background:var(--warn-bg);color:var(--warn)}
+
+  /* פס בקצה המוביל של השורה (ב-RTL = הימני). ערוץ נפרד מרקע השורה, ששייך
+     לסטטוס — כך צבע = שנה, רקע = סטטוס, ושניהם נקראים בלי להתנגש. */
+  tr.student-row td:first-child{border-inline-start:4px solid transparent}
+  tr.student-row.yr1 td:first-child{border-inline-start-color:var(--y1)}
+  tr.student-row.yr2 td:first-child{border-inline-start-color:var(--y2)}
+  tr.student-row.yr3 td:first-child{border-inline-start-color:var(--y3)}
+  tr.student-row.yr0 td:first-child{border-inline-start-color:var(--warn)}
+
+  /* שבבי המסנן נושאים את אותם צבעים — כך שהם גם המקרא, בלי רכיב נוסף. */
+  .year-chip .dot{display:inline-block;width:9px;height:9px;border-radius:50%;
+    margin-inline-end:6px;vertical-align:-1px}
+  .year-chip.c1 .dot{background:var(--y1)} .year-chip.c1.active{border-color:var(--y1);background:var(--y1-bg);color:var(--y1)}
+  .year-chip.c2 .dot{background:var(--y2)} .year-chip.c2.active{border-color:var(--y2);background:var(--y2-bg);color:var(--y2)}
+  .year-chip.c3 .dot{background:var(--y3)} .year-chip.c3.active{border-color:var(--y3);background:var(--y3-bg);color:var(--y3)}
+  .year-chip.c0 .dot{background:var(--warn)} .year-chip.c0.active{border-color:var(--warn);background:var(--warn-bg);color:var(--warn)}
+  .cohort-select{font-size:12px;padding:3px 6px;border-radius:6px;border:1px solid var(--border);
+    background:var(--surface);color:var(--ink-soft);margin-top:4px;max-width:110px}
   .contact-mini{font-size:12px;color:var(--muted);direction:ltr;text-align:right}
   .contact-mini a{color:var(--accent);text-decoration:none}
   .contact-mini a:hover{text-decoration:underline}
@@ -277,6 +317,7 @@
       <input type="text" id="newStudentName" placeholder="שם מלא (חובה)">
       <input type="email" id="newStudentEmail" placeholder="מייל (לא חובה)">
       <input type="tel" id="newStudentPhone" placeholder="טלפון (לא חובה)">
+      <select id="newStudentCohort" title="מחזור"><option value="">— מחזור —</option></select>
       <button id="addStudentBtn">+ הוסף</button>
       <button id="toggleBulkBtn" class="secondary">הוספת רשימה</button>
     </div>
@@ -288,6 +329,7 @@
         <button class="cancel" id="bulkCancelBtn">בטל</button>
       </div>
     </div>
+    <div class="year-filter" id="yearFilter"></div>
     <div id="studentsTableContainer"></div>
   </div>
 
@@ -449,6 +491,9 @@ function showErr(msg){
 
 // Cache last loaded data so the students section can re-render without a re-fetch
 let lastData = null;
+// שנת הלימוד שנבחרה במסנן התלמידים. '' = הכל. נשמר בין רינדורים כדי שסימון
+// שיבוץ לא יזרוק את טל בחזרה לתצוגת "הכל" באמצע עבודה על שנה מסוימת.
+let studentYearFilter = '';
 
 function recalcDemoSummary(d){
   if(!d || !d.students) return;
@@ -490,11 +535,26 @@ function renderStats(d){
   document.getElementById('progressPct').textContent = pct + '%';
   document.getElementById('progressBar').style.width = pct + '%';
 
-  renderStudents(d.students || [], d.supervisors || []);
+  fillCohortPicker(d.cohorts || []);
+  renderStudents(d.students || [], d.supervisors || [], d.cohorts || []);
   renderTable(d.supervisors);
 }
 
-function renderStudents(students, supervisors){
+// ממלא את תפריט המחזור בטופס ההוספה מתוך לשונית Cohorts — לא מקבועים בקוד,
+// כך שהוספת מחזור חדש בגיליון מופיעה כאן מיד ובלי פריסה.
+function fillCohortPicker(cohorts){
+  const sel = document.getElementById('newStudentCohort');
+  if(!sel) return;
+  const cur = sel.value;
+  sel.innerHTML = '<option value="">— מחזור —</option>' +
+    cohorts.map(c => `<option value="${esc(c.cohort)}">מחזור ${esc(c.cohort)} · שנה ${c.year}</option>`).join('');
+  sel.value = cur;
+}
+
+function yearLabel(y){ return y ? ['','שנה א','שנה ב','שנה ג','שנה ד'][y] || ('שנה '+y) : ''; }
+
+function renderStudents(students, supervisors, cohorts){
+  cohorts = cohorts || [];
   const counts = document.getElementById('studentsCounts');
   const c = document.getElementById('studentsTableContainer');
   const placed = students.filter(s => s.placedWith).length;
@@ -510,10 +570,32 @@ function renderStudents(students, supervisors){
   }
   counts.innerHTML = `סה״כ <b>${students.length}</b> תלמידים · <span style="color:#0f6e4a"><b>${placed}</b> שובצו</span> · <span style="color:#92400e"><b>${waiting}</b> ממתינים</span>`;
 
+  // מסנן שנת לימוד (בקשת טל 19.8.26). שים לב שהקיבוץ ממתינים/שובצו נשמר —
+  // הוא מה שמעלה את מי שעדיין מחפש לראש הרשימה, וזו הסיבה שהוא קיים. השנה
+  // היא מסנן מעליו ולא קיבוץ שמחליף אותו.
+  const yearsPresent = [...new Set(students.map(s => s.year || 0))].sort((a,b) => a-b);
+  const fBar = document.getElementById('yearFilter');
+  if(fBar){
+    const chip = (val,label,n,cls) => `<button class="year-chip${cls?' '+cls:''}${String(studentYearFilter)===String(val)?' active':''}" data-year="${val}">${cls?'<span class="dot"></span>':''}${label}<span class="n">${n}</span></button>`;
+    let bar = chip('','כל השנים',students.length,'');
+    yearsPresent.filter(y=>y>0).forEach(y => bar += chip(y, yearLabel(y), students.filter(s=>s.year===y).length, 'c'+y));
+    const noneCount = students.filter(s => !s.year).length;
+    if(noneCount) bar += chip('none','⚠ ללא שנה',noneCount,'c0');
+    fBar.innerHTML = students.length ? bar : '';
+    fBar.querySelectorAll('.year-chip').forEach(b => b.addEventListener('click', () => {
+      studentYearFilter = b.getAttribute('data-year');
+      renderStudents(students, supervisors, cohorts);
+    }));
+  }
+  const shown = !studentYearFilter ? students
+    : (studentYearFilter === 'none' ? students.filter(s => !s.year)
+                                     : students.filter(s => String(s.year) === String(studentYearFilter)));
+
   // Split into waiting + placed, alphabetical within each
   const byName = (a,b) => String(a.fullName).localeCompare(String(b.fullName));
-  const waitingList = students.filter(s => !s.placedWith).sort(byName);
-  const placedList = students.filter(s => !!s.placedWith).sort(byName);
+  const waitingList = shown.filter(s => !s.placedWith).sort(byName);
+  const placedList = shown.filter(s => !!s.placedWith).sort(byName);
+  const cohortOpts = cohorts.map(c => `<option value="${esc(c.cohort)}">מחזור ${esc(c.cohort)}</option>`).join('');
 
   // Build supervisor dropdown options once
   const supOpts = supervisors.map(s => `<option value="${esc(s.token)}">${esc(s.fullName)}</option>`).join('');
@@ -525,8 +607,18 @@ function renderStudents(students, supervisors){
       ? `<span class="student-status placed">✓ שובץ אצל ${esc(s.placedWithName || '—')}</span>`
       : `<span class="student-status waiting">○ ממתין לשיבוץ</span>`;
     const rowClass = isPlaced ? 'student-row placed-row' : 'student-row waiting-row';
-    return `<tr class="${rowClass}" data-id="${esc(s.id)}">
+    // הצבע לפי מספר השנה; המחזור נשאר בטקסט כדי שהצבע יהיה עזר לסריקה מהירה
+    // ולא הסימן היחיד — מי שלא מבחין בגוונים עדיין קורא "שנה ב · מחזור ב".
+    const yTag = s.year
+      ? `<span class="year-tag y${s.year}">${yearLabel(s.year)}${s.cohort ? ` · מחזור ${esc(s.cohort)}` : ''}</span>`
+      : `<span class="year-tag none">⚠ ללא שנה</span>`;
+    return `<tr class="${rowClass} yr${s.year || 0}" data-id="${esc(s.id)}">
       <td class="name-cell" data-label="שם">${esc(s.fullName)}</td>
+      <td data-label="שנה">${yTag}
+        <div><select class="cohort-select" data-id="${esc(s.id)}">
+          <option value="">— מחזור —</option>${cohortOpts}
+        </select></div>
+      </td>
       <td data-label="קשר"><div class="contact-mini">${s.email ? `<a href="mailto:${esc(s.email)}">${esc(s.email)}</a><br>`:''}${phoneStr ? `<a href="tel:${esc(phoneStr)}">${esc(phoneStr)}</a>`:''}</div></td>
       <td data-label="שיבוץ">
         ${status}
@@ -546,6 +638,7 @@ function renderStudents(students, supervisors){
   let html = `<table>
     <thead><tr>
       <th>שם</th>
+      <th>שנה ומחזור</th>
       <th>פרטי קשר</th>
       <th>סטטוס שיבוץ</th>
       <th>פעולות</th>
@@ -553,12 +646,12 @@ function renderStudents(students, supervisors){
     <tbody>`;
 
   if(waitingList.length > 0){
-    html += `<tr class="student-section-header waiting-header first"><td colspan="4">⏳ ממתינים לשיבוץ <span class="count">(${waitingList.length})</span></td></tr>`;
+    html += `<tr class="student-section-header waiting-header first"><td colspan="5">⏳ ממתינים לשיבוץ <span class="count">(${waitingList.length})</span></td></tr>`;
     waitingList.forEach(s => { html += renderRow(s); });
   }
   if(placedList.length > 0){
     const cls = waitingList.length === 0 ? 'first' : '';
-    html += `<tr class="student-section-header placed-header ${cls}"><td colspan="4">✓ שובצו <span class="count">(${placedList.length})</span></td></tr>`;
+    html += `<tr class="student-section-header placed-header ${cls}"><td colspan="5">✓ שובצו <span class="count">(${placedList.length})</span></td></tr>`;
     placedList.forEach(s => { html += renderRow(s); });
   }
 
@@ -570,6 +663,28 @@ function renderStudents(students, supervisors){
   sorted.forEach(s => {
     const sel = c.querySelector(`select.placement-select[data-id="${cssEsc(s.id)}"]`);
     if(sel) sel.value = s.placedWith || '';
+    const coh = c.querySelector(`select.cohort-select[data-id="${cssEsc(s.id)}"]`);
+    if(coh) coh.value = s.cohort || '';
+  });
+
+  // שיוך מחזור. התוכנית נשלחת יחד איתו כי cohortYear_ מפרש מחזור בהקשר של
+  // תוכנית — מחזור 'א' בתוכנית אחרת יכול להיות שנה אחרת לגמרי.
+  c.querySelectorAll('select.cohort-select').forEach(sel => {
+    sel.addEventListener('change', async (e) => {
+      const id = e.target.getAttribute('data-id');
+      const cohort = e.target.value;
+      const stu = (lastData.students || []).find(x => x.id === id) || {};
+      const program = stu.program || (cohorts[0] && cohorts[0].program) || '';
+      if(!LIVE){
+        if(stu.id){ stu.cohort = cohort; const m = cohorts.find(x=>x.cohort===cohort); stu.year = m ? m.year : 0; renderStats(lastData); }
+        return;
+      }
+      e.target.disabled = true;
+      const r = await apiCall('updateStudent', {adminPin: sessionStorage.getItem('admin-pin') || '', id, cohort, program});
+      e.target.disabled = false;
+      if(!r || r.error){ showErr(actionErrorText(r, 'עדכון המחזור נכשל: ')); return; }
+      loadStats();
+    });
   });
 
   // Wire up dropdowns
@@ -806,9 +921,16 @@ async function addOneStudent(){
     document.getElementById('newStudentName').value = '';
     document.getElementById('newStudentEmail').value = '';
     document.getElementById('newStudentPhone').value = '';
+  if(cohSel) cohSel.value = '';
     return;
   }
-  const r = await apiCall('addStudent', {adminPin: sessionStorage.getItem('admin-pin') || '', fullName: name, email, phone});
+  // המחזור נלקח מהתפריט; התוכנית נגררת מהמחזור שנבחר בלשונית Cohorts, כדי שלא
+  // ייווצר תלמיד עם מחזור אך בלי תוכנית — צירוף שהיה מחזיר שנה 0 ומופיע כ'ללא שנה'.
+  const cohSel = document.getElementById('newStudentCohort');
+  const cohort = cohSel ? cohSel.value : '';
+  const cohMatch = ((lastData && lastData.cohorts) || []).find(c => c.cohort === cohort);
+  const program = cohMatch ? cohMatch.program : '';
+  const r = await apiCall('addStudent', {adminPin: sessionStorage.getItem('admin-pin') || '', fullName: name, email, phone, cohort, program});
   btn.disabled = false;
   if(!r || r.error){
     showErr(actionErrorText(r, 'הוספת תלמיד נכשלה: '));

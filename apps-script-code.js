@@ -26,9 +26,19 @@ const TAB_SUPERVISORS = 'Supervisors';
 const TAB_PARAMETERS = 'Parameters';
 const TAB_SETTINGS = 'Settings';
 const TAB_STUDENTS = 'Students';
+// מיפוי מחזור→שנת לימוד. לשונית שהמנהלה מתחזקת: 3 שורות שמקדמים פעם בשנה,
+// במקום לעדכן את השנה בכל כרטיס תלמיד בנפרד.
+const TAB_COHORTS = 'Cohorts';
 
 const STUDENT_COLS = [
   'id', 'created', 'fullName', 'email', 'phone',
+  // התוכנית והמחזור שהתלמיד/ה שייך/ת אליהם. ⭐ המחזור נשמר ולא השנה, בכוונה:
+  // 'מחזור ג' הוא עובדה שלא משתנה לעולם, בעוד 'שנה א' נכונה רק לשנה אחת —
+  // באלול הבא אותו מחזור הופך לשנה ב'. אחסון השנה היה מחייב לעבור על כל
+  // התלמידים כל שנה, וכל מי שהיה נשכח היה מוצג בשנה שגויה בלי שום סימן.
+  // השנה נגזרת מלשונית Cohorts — ראו cohortYear_().
+  'program',      // 'הדיאלוגי' וכו' — התוכנית שבה התלמיד/ה לומד/ת
+  'cohort',       // 'א'/'ב'/'ג' — המחזור. קבוע לכל אורך הלימודים
   'placedWith',   // supervisor token, or empty if not placed
   'placedDate',   // ISO date when placed, or empty
   'notes'
@@ -264,7 +274,10 @@ function toClientSupervisor(r, placedCount) {
     id: publicSupervisorId(r.token),
     fullName: r.fullName,
     credential: r.credential,
-    yearsSupervising: Number(r.yearsSupervising) || 0,
+    // yearsSupervising הוסר מהמנה הנשלחת לסטודנטים (בקשת הצוות, 19.8.26).
+    // לא רק שאינו מוצג — הוא אינו נשלח, כך שאי-אפשר לשלוף אותו מלשונית
+    // Network. הנתון נשמר בגיליון, המדריך ממשיך לערוך אותו ב-supervisor.html,
+    // ו-getAdminStats ממשיך לראות אותו לצד המנהלה.
     orientations: splitList(r.orientations),
     populations: splitList(r.populations),
     specialties: splitList(r.specialties),
@@ -487,8 +500,13 @@ function getAdminStats(p) {
   ensureMaxStudentsColumn();
   ensureCardTypeColumn();
   ensureArchivedColumn();
+  ensureStudentCohortColumns();
   const rows = readSupervisorRows();
   const students = readStudentRows();
+  const cohortList = readCohorts_();   // פעם אחת לכל הבקשה
+  // רשימת המחזורים הפעילים נשלחת למנהלה כדי שהתפריטים ייבנו ממנה ולא מקבועים בקוד.
+  const activeCohorts = cohortList.filter(c => c.active)
+    .sort((a, b) => a.year - b.year);
 
   // Build supervisor token → name lookup
   const supByToken = {};
@@ -565,6 +583,8 @@ function getAdminStats(p) {
       hasStudentList: students.length > 0
     },
     supervisors,
+    // המחזורים הפעילים — כדי שהתפריטים והקיבוץ במנהלה ייבנו מהלשונית ולא מקוד.
+    cohorts: activeCohorts,
     students: students.map(s => ({
       id: s.id,
       fullName: s.fullName,
@@ -573,7 +593,10 @@ function getAdminStats(p) {
       placedWith: s.placedWith || '',
       placedWithName: s.placedWith && supByToken[s.placedWith] ? supByToken[s.placedWith].fullName : '',
       placedDate: s.placedDate || '',
-      notes: s.notes || ''
+      notes: s.notes || '',
+      program: s.program || '',
+      cohort: s.cohort || '',
+      year: cohortYear_(s.program, s.cohort, cohortList)
     }))
   };
 }
@@ -582,8 +605,10 @@ function getAdminStats(p) {
 
 function getStudents(p) {
   requireAdminPin(p);
+  ensureStudentCohortColumns();
   const rows = readStudentRows();
   const sup = readSupervisorRows();
+  const cohorts = readCohorts_();   // נקרא פעם אחת, לא פעם לכל תלמיד
   const supByToken = {};
   sup.forEach(r => { if (r.token) supByToken[r.token] = r.fullName || ''; });
   return {
@@ -596,7 +621,11 @@ function getStudents(p) {
       placedWithName: s.placedWith ? (supByToken[s.placedWith] || '') : '',
       placedDate: s.placedDate || '',
       notes: s.notes || '',
-      created: s.created || ''
+      created: s.created || '',
+      program: s.program || '',
+      cohort: s.cohort || '',
+      // נגזר מלשונית Cohorts ולא נשמר בשורה — ראו ההערה ב-STUDENT_COLS.
+      year: cohortYear_(s.program, s.cohort, cohorts)
     }))
   };
 }
@@ -605,25 +634,25 @@ function addStudent(p) {
   requireAdminPin(p);
   const fullName = String(p.fullName || '').trim();
   if (!fullName) return { error: 'missing_name' };
+  ensureStudentCohortColumns();
   const sheet = getOrCreateStudentsSheet();
   const id = generateStudentId();
   const now = new Date().toISOString();
-  const row = STUDENT_COLS.map(col => {
-    switch (col) {
-      case 'id': return id;
-      case 'created': return now;
-      case 'fullName': return fullName;
-      case 'email': return String(p.email || '').trim();
-      case 'phone': return String(p.phone || '').trim();
-      case 'placedWith': return String(p.placedWith || '').trim();
-      case 'placedDate': return p.placedWith ? now : '';
-      case 'notes': return String(p.notes || '').trim();
-      default: return '';
-    }
+  const row = studentRowForSheet_(sheet, {
+    id: id,
+    created: now,
+    fullName: fullName,
+    email: String(p.email || '').trim(),
+    phone: String(p.phone || '').trim(),
+    program: String(p.program || '').trim(),
+    cohort: String(p.cohort || '').trim(),
+    placedWith: String(p.placedWith || '').trim(),
+    placedDate: p.placedWith ? now : '',
+    notes: String(p.notes || '').trim()
   });
   sheet.appendRow(row);
-  // Force phone column to text
-  const phoneCol = STUDENT_COLS.indexOf('phone');
+  // Force phone column to text (index taken from the sheet, not the schema)
+  const phoneCol = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0].indexOf('phone');
   if (phoneCol >= 0 && p.phone) {
     const r = sheet.getLastRow();
     sheet.getRange(r, phoneCol + 1).setNumberFormat('@').setValue(String(p.phone).trim());
@@ -647,7 +676,7 @@ function updateStudent(p) {
   }
   if (rowIdx < 0) return { error: 'not_found' };
 
-  const updatable = ['fullName', 'email', 'phone', 'placedWith', 'notes'];
+  const updatable = ['fullName', 'email', 'phone', 'placedWith', 'notes', 'program', 'cohort'];
   for (const k of updatable) {
     if (p[k] === undefined) continue;
     const col = headers.indexOf(k);
@@ -695,6 +724,7 @@ function deleteStudent(p) {
 }
 
 function bulkAddStudents(p) {
+  ensureStudentCohortColumns();   // כדי שהכותרות שנקראות למטה כוללות גם program/cohort
   requireAdminPin(p);
   const text = String(p.names || '');
   // Each line = one student. Optional: "Name, email, phone" comma-separated.
@@ -720,25 +750,20 @@ function bulkAddStudents(p) {
     if (existingNames.has(nameKey) || (emailKey && existingEmails.has(emailKey))) { skipped++; continue; }
     existingNames.add(nameKey);
     if (emailKey) existingEmails.add(emailKey);
-    newRows.push(STUDENT_COLS.map(col => {
-      switch (col) {
-        case 'id': return generateStudentId();
-        case 'created': return now;
-        case 'fullName': return fullName;
-        case 'email': return email;
-        case 'phone': return phone;
-        case 'placedWith': return '';
-        case 'placedDate': return '';
-        case 'notes': return '';
-        default: return '';
-      }
+    newRows.push(studentRowForSheet_(sheet, {
+      id: generateStudentId(),
+      created: now,
+      fullName: fullName,
+      email: email,
+      phone: phone
     }));
     added++;
   }
   if (newRows.length) {
     const startRow = sheet.getLastRow() + 1;
-    sheet.getRange(startRow, 1, newRows.length, STUDENT_COLS.length).setValues(newRows);
-    const phoneCol = STUDENT_COLS.indexOf('phone');
+    const hdrs = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+    sheet.getRange(startRow, 1, newRows.length, hdrs.length).setValues(newRows);
+    const phoneCol = hdrs.indexOf('phone');
     if (phoneCol >= 0) {
       sheet.getRange(startRow, phoneCol + 1, newRows.length, 1).setNumberFormat('@');
     }
@@ -845,6 +870,86 @@ function readStudentRows() {
     const obj = {};
     headers.forEach((h, i) => { obj[h] = row[i]; });
     return obj;
+  });
+}
+
+/* ========== Cohorts → study year ========== */
+
+const COHORT_COLS = ['program', 'cohort', 'year', 'active'];
+
+// ⭐ למה לשונית ולא מפה בקוד: הסקריפט הזה דורש Redeploy ידני בכל שינוי, ולכן
+// מיפוי בקוד היה הופך את גלגול השנה לפעולת מתכנת. בלשונית טל מקדמת שלושה
+// מספרים בעצמה, בלי אף פריסה.
+function getOrCreateCohortsSheet() {
+  const ss = SpreadsheetApp.getActive();
+  let sheet = ss.getSheetByName(TAB_COHORTS);
+  if (!sheet) {
+    sheet = ss.insertSheet(TAB_COHORTS);
+    sheet.appendRow(COHORT_COLS);
+    sheet.setFrozenRows(1);
+    // מצב תשפ"ז: מחזור ג הוא שנה א, ב הוא שנה ב, א הוא שנה ג. היחס הפוך
+    // מפני שמחזור מוקדם יותר מתקדם יותר בלימודים.
+    sheet.appendRow(['הדיאלוגי', 'ג', 1, true]);
+    sheet.appendRow(['הדיאלוגי', 'ב', 2, true]);
+    sheet.appendRow(['הדיאלוגי', 'א', 3, true]);
+    sheet.getRange(1, 1, 1, COHORT_COLS.length).setFontWeight('bold');
+  }
+  return sheet;
+}
+
+function readCohorts_() {
+  const values = getOrCreateCohortsSheet().getDataRange().getValues();
+  if (values.length < 2) return [];
+  const h = values[0];
+  return values.slice(1)
+    .filter(r => String(r[h.indexOf('cohort')] || '').trim())
+    .map(r => ({
+      program: String(r[h.indexOf('program')] || '').trim(),
+      cohort:  String(r[h.indexOf('cohort')]  || '').trim(),
+      year:    Number(r[h.indexOf('year')]) || 0,
+      active:  r[h.indexOf('active')] === true || String(r[h.indexOf('active')]).toUpperCase() === 'TRUE'
+    }));
+}
+
+// שנת הלימוד של תלמיד/ה. מחזיר 0 כשאין התאמה — ואת זה המנהלה רואה כ'—',
+// כדי שמחזור שלא מופיע בלשונית ייראה כחסר ולא יקבל בשקט שנה שגויה.
+function cohortYear_(program, cohort, cohorts) {
+  const prog = String(program || '').trim();
+  const coh  = String(cohort  || '').trim();
+  if (!coh) return 0;
+  const list = cohorts || readCohorts_();
+  const hit = list.filter(c => c.cohort === coh && (!c.program || !prog || c.program === prog))[0];
+  return hit ? hit.year : 0;
+}
+
+// הגירה עצמית, באותה תבנית של ensureMaxStudentsColumn: מוסיפה את העמודות
+// החסרות בסוף הלשונית כדי לא להזיז נתונים קיימים. בטוח להריץ שוב ושוב.
+// ⚠⚠ סדר העמודות בגיליון אינו זהה לסדר ב-STUDENT_COLS, ולעולם לא יהיה:
+// עמודות חדשות מתווספות בסוף הלשונית (כדי לא להזיז נתונים קיימים), בעוד
+// שבסכימה הן ממוקמות במקום ההגיוני שלהן. לכן כתיבה עם appendRow לפי סדר
+// הסכימה מכניסה כל ערך לעמודה הלא נכונה — למשל program לתוך placedWith,
+// מה שהיה הופך כל תלמיד חדש ל"משובץ" אצל טוקן שאינו קיים.
+// הפונקציה הזאת ממפה לפי שם הכותרת, כמו lineForSheet_ במעקב הפניות.
+function studentRowForSheet_(sheet, obj) {
+  const lastCol = sheet.getLastColumn();
+  const headers = sheet.getRange(1, 1, 1, lastCol).getValues()[0];
+  return headers.map(h => {
+    const key = String(h || '').trim();
+    return Object.prototype.hasOwnProperty.call(obj, key) ? obj[key] : '';
+  });
+}
+
+
+function ensureStudentCohortColumns() {
+  const sheet = getOrCreateStudentsSheet();
+  const lastCol = sheet.getLastColumn();
+  const headers = sheet.getRange(1, 1, 1, lastCol).getValues()[0];
+  let next = lastCol;
+  ['program', 'cohort'].forEach(col => {
+    if (headers.indexOf(col) >= 0) return;
+    next++;
+    sheet.getRange(1, next).setValue(col);
+    Logger.log('Added "' + col + '" column to Students. Existing rows left blank.');
   });
 }
 

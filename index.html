@@ -666,9 +666,11 @@ function render(){
     const pill = isConsult
       ? `<span class="pill consult">🩺 ייעוץ פסיכיאטרי</span>`
       : `<span class="pill ${s.hasSpot?'available':'full'}">${s.hasSpot?'יש מקום':'אין מקום'}</span>`;
+    // שנות הניסיון בהדרכה הוסרו מהתצוגה לסטודנטים (בקשת הצוות, 19.8.26). הנתון
+    // עצמו נשמר בגיליון והמדריך ממשיך למלא אותו — הוא פשוט אינו מוצג ואינו נשלח.
     const metaRight = isConsult
       ? `<span>ייעוץ פסיכיאטרי ממוקד · לא הדרכה</span>`
-      : `<span>${s.yearsSupervising === 1 ? 'שנת הדרכה' : `${s.yearsSupervising} שנות הדרכה`}</span>`;
+      : `<span>${s.credential || 'מדריך/ה'}</span>`;
     card.innerHTML = `
       <div class="card-head">
         <div class="name">
@@ -729,7 +731,7 @@ function openModal(s){
     <div class="modal-head">
       <h2>${s.fullName}</h2>
       <p class="credential">${s.credential}</p>
-      <div class="meta-line">${isConsult ? 'ייעוץ פסיכיאטרי ממוקד (לא הדרכה)' : (s.yearsSupervising === 1 ? 'שנת הדרכה' : `${s.yearsSupervising} שנות הדרכה`)} · ${s.format}${s.area?' · '+s.area:''} · ${isConsult ? `<span class="pill consult" style="font-size:11px">🩺 ייעוץ פסיכיאטרי</span>` : `<span class="pill ${s.hasSpot?'available':'full'}" style="font-size:11px">${s.hasSpot?'יש מקום':'אין מקום'}</span>`}</div>
+      <div class="meta-line">${isConsult ? 'ייעוץ פסיכיאטרי ממוקד (לא הדרכה)' : s.format}${isConsult ? ' · '+s.format : ''}${s.area?' · '+s.area:''} · ${isConsult ? `<span class="pill consult" style="font-size:11px">🩺 ייעוץ פסיכיאטרי</span>` : `<span class="pill ${s.hasSpot?'available':'full'}" style="font-size:11px">${s.hasSpot?'יש מקום':'אין מקום'}</span>`}</div>
     </div>
 
     <div class="field">
