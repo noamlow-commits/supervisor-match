@@ -91,6 +91,23 @@
   .badge.spot-no{background:var(--full-bg);color:var(--full)}
   .badge.zero{background:var(--full-bg);color:var(--full)}
 
+  /* פקדי קיבולת/מתג בטבלת המדריכים — עריכה ישירה מהמנהלה, למדריכים
+     שלא נכנסים לכרטיס שלהם. הפקד הוא המתג הידני של המדריך; התווית שמעליו
+     היא מה שהתלמידים באמת רואים, והשניים נבדלים כשהמדריך מלא לפי קיבולת. */
+  .cap-cell{display:flex;align-items:center;gap:6px}
+  .cap-input{width:56px;padding:5px 6px;border:1.5px solid var(--border);border-radius:7px;background:white;color:var(--ink);font-size:14px;font-family:inherit;text-align:center;outline:none}
+  .cap-input:focus{border-color:var(--accent)}
+  .cap-input:disabled{opacity:.5}
+  .cap-state{font-size:11px;color:var(--muted);min-width:14px}
+  .cap-state.saved{color:var(--available)}
+  .cap-state.failed{color:var(--full);cursor:help}
+  .spot-cell{display:flex;flex-direction:column;align-items:flex-start;gap:6px}
+  .willing-toggle{display:inline-flex;align-items:center;gap:5px;font-size:11.5px;font-weight:600;padding:3px 9px;border-radius:999px;border:1.5px solid transparent;white-space:nowrap;line-height:1.6}
+  .willing-toggle.on{background:var(--available-bg);color:var(--available);border-color:#a7e3c4}
+  .willing-toggle.off{background:#f1f0ec;color:var(--muted);border-color:var(--border)}
+  .willing-toggle:hover:not(:disabled){filter:brightness(.96)}
+  .willing-toggle:disabled{opacity:.55;cursor:default}
+  .cap-note{font-size:11px;color:var(--warn)}
   .num-students{font-size:16px;font-weight:700;color:var(--ink)}
   .num-students.zero{color:var(--muted);font-weight:500}
 
@@ -228,6 +245,9 @@
   .bulk-paste textarea{width:100%;padding:10px 12px;border:1.5px solid var(--border);border-radius:8px;background:white;color:var(--ink);outline:none;font-size:14px;font-family:inherit;resize:vertical;min-height:90px}
   .bulk-paste textarea:focus{border-color:var(--accent)}
   .bulk-paste .hint{font-size:12.5px;color:var(--muted);margin:6px 0 10px}
+  .bulk-cohort{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:0 0 10px}
+  .bulk-cohort label{font-size:13px;font-weight:600;color:var(--ink-soft)}
+  .bulk-cohort select{padding:7px 10px;border:1.5px solid var(--border);border-radius:8px;background:white;color:var(--ink);font-size:13.5px;font-family:inherit}
   .bulk-paste .actions{display:flex;gap:8px;margin-top:8px}
   .bulk-paste button{padding:8px 14px;border-radius:8px;font-weight:600;font-size:13.5px}
   .bulk-paste button.primary{background:var(--accent);color:white}
@@ -323,6 +343,11 @@
     </div>
     <div class="bulk-paste" id="bulkPaste">
       <p class="hint">הדביקי שם בכל שורה. אופציונלי — שם, מייל, טלפון מופרדים בפסיקים. שמות שכבר קיימים יידלגו.</p>
+      <div class="bulk-cohort">
+        <label for="bulkCohort">מחזור לכל הרשימה:</label>
+        <select id="bulkCohort"><option value="">— ללא מחזור —</option></select>
+        <span class="hint" style="margin:0">בלי מחזור התלמידים ייכנסו בלי שנת לימוד ויופיעו תחת ״ללא שנה״.</span>
+      </div>
       <textarea id="bulkText" placeholder="יעל כהן&#10;דוד לוי, david@example.com&#10;מירי שדה, miri@example.com, 0501234567"></textarea>
       <div class="actions">
         <button class="primary" id="bulkSubmitBtn">הוסף את כולם</button>
@@ -338,6 +363,7 @@
     <div class="table-head">
       <h2>פירוט לפי מדריך</h2>
       <p class="desc">מחולק לקבוצות: פנויים לקבל / מלאים / טרם פרסמו. בכל קבוצה מסודר לפי מספר תלמידים. לחיצה על "ערוך" פותחת את פרופיל המדריך בלשונית חדשה.</p>
+      <p class="desc"><b>הקיבולת והמתג ניתנים לעריכה כאן</b> — למדריכים שלא נכנסים לכרטיס שלהם. השינוי נשמר מיד ומחליף את מה שהמדריך הגדיר. התווית (״יש מקום״ / ״אין מקום״) היא מה שהתלמידים רואים, והיא נגזרת משניהם: מתג פתוח <b>וגם</b> מתחת לקיבולת.</p>
     </div>
     <div id="tableContainer"></div>
   </div>
@@ -362,7 +388,11 @@ const LIVE = !!APPS_SCRIPT_URL;
 const RETRYABLE_ACTIONS = new Set([
   'verifyClassPin','verifyRegistrationCode','verifyAdminPin',
   'getSupervisors','getSupervisor','getParameters','getAdminStats',
-  'getStudents','getUnplacedStudents','getMyPlacedStudents'
+  'getStudents','getUnplacedStudents','getMyPlacedStudents',
+  // The one write on the list. setSupervisorCapacity assigns absolute values rather
+  // than incrementing anything, so a retry after a timeout lands on the same result —
+  // and these edits are exactly the ones a flaky call would otherwise silently drop.
+  'setSupervisorCapacity'
 ]);
 
 let lastApiFailure = '';
@@ -543,12 +573,16 @@ function renderStats(d){
 // ממלא את תפריט המחזור בטופס ההוספה מתוך לשונית Cohorts — לא מקבועים בקוד,
 // כך שהוספת מחזור חדש בגיליון מופיעה כאן מיד ובלי פריסה.
 function fillCohortPicker(cohorts){
-  const sel = document.getElementById('newStudentCohort');
-  if(!sel) return;
-  const cur = sel.value;
-  sel.innerHTML = '<option value="">— מחזור —</option>' +
-    cohorts.map(c => `<option value="${esc(c.cohort)}">מחזור ${esc(c.cohort)} · שנה ${c.year}</option>`).join('');
-  sel.value = cur;
+  // אותה רשימה משרתת גם הוספה בודדת וגם הדבקת רשימה. לשתיהן צריך מחזור:
+  // תלמיד בלי מחזור הוא תלמיד בלי שנת לימוד, ואז הוא נופל למסנן ״ללא שנה״.
+  const opts = cohorts.map(c => `<option value="${esc(c.cohort)}">מחזור ${esc(c.cohort)} · שנה ${c.year}</option>`).join('');
+  [['newStudentCohort','— מחזור —'], ['bulkCohort','— ללא מחזור —']].forEach(([id, blank]) => {
+    const sel = document.getElementById(id);
+    if(!sel) return;
+    const cur = sel.value;
+    sel.innerHTML = `<option value="">${blank}</option>` + opts;
+    sel.value = cur;
+  });
 }
 
 function yearLabel(y){ return y ? ['','שנה א','שנה ב','שנה ג','שנה ד'][y] || ('שנה '+y) : ''; }
@@ -771,8 +805,10 @@ function renderTable(supervisors){
     return `<tr class="sup-row ${rowClass}">
       <td class="name-cell" data-label="מדריך">${esc(s.fullName)}<span class="credential">${esc(s.credential)}</span></td>
       <td data-label="תלמידים"><span class="num-students${s.studentsAccepted === 0 ? ' zero':''}">${isConsult ? '—' : s.studentsAccepted}</span></td>
-      <td data-label="קיבולת">${isConsult ? '<span style="color:#aaa">—</span>' : ((s.maxStudents === '' || s.maxStudents == null) ? '<span style="color:#aaa">—</span>' : esc(s.maxStudents))}</td>
-      <td data-label="מקום פנוי">${spotCell}</td>
+      <td data-label="קיבולת">${isConsult || !s.token
+        ? '<span style="color:#aaa">—</span>'
+        : `<div class="cap-cell"><input class="cap-input" type="number" min="0" max="30" step="1" placeholder="—" value="${s.maxStudents === '' || s.maxStudents == null ? '' : esc(s.maxStudents)}" data-cap-input data-token="${esc(s.token)}" data-name="${esc(s.fullName)}" title="כמה מודרכים המדריך יכול לקלוט השנה. ריק = בלי הגבלה."><span class="cap-state" data-cap-state></span></div>`}</td>
+      <td data-label="מקום פנוי">${isConsult || !s.token ? spotCell : `<div class="spot-cell">${spotCell}<button class="willing-toggle ${s.willing ? 'on' : 'off'}" data-willing-action data-token="${esc(s.token)}" data-name="${esc(s.fullName)}" data-willing="${s.willing ? 'true' : 'false'}" title="${s.willing ? 'המדריך מסומן כפתוח לקבלת מודרכים. לחיצה תסגור.' : 'המדריך מסומן כסגור לקבלה. לחיצה תפתח.'}">${s.willing ? '🟢 מתג פתוח' : '⚪ מתג סגור'}</button>${s.willing && s.atCapacity ? '<span class="cap-note">המתג פתוח אבל הקיבולת מלאה — התלמידים לא רואים.</span>' : ''}</div>`}</td>
       <td data-label="פרסום"><span class="badge ${s.published ? 'published' : 'unpublished'}">${s.published ? '● מפורסם' : '○ טיוטה'}</span></td>
       <td data-label="קשר"><div class="contact-mini">${s.email ? `<a href="mailto:${esc(s.email)}">${esc(s.email)}</a><br>`:''}${phoneStr ? `<a href="tel:${esc(phoneStr)}">${esc(phoneStr)}</a>`:''}</div></td>
       <td data-label="פעולה"><div class="row-actions">
@@ -825,6 +861,7 @@ function renderTable(supervisors){
   html += '</tbody></table>';
   c.innerHTML = html;
   wireSupervisorActions(c);
+  wireCapacityControls(c);
 }
 
 /* ===== Archive / restore / delete a supervisor ===== */
@@ -868,6 +905,94 @@ function wireSupervisorActions(c){
           showErr(actionErrorText(r, 'הפעולה נכשלה: '));
         }
         return;
+      }
+      loadStats();
+    });
+  });
+}
+
+/* ===== Capacity + availability, edited from here =====
+   Not every supervisor opens their own card. Some never find the link again, some
+   are simply busy, and the secretary ends up phoning them to ask for a toggle flip.
+   These two controls write the same two cells the supervisor's own form writes —
+   but through setSupervisorCapacity, which touches ONLY those cells. Deliberately
+   not routed through the full-profile save: that one rewrites every field, and a
+   save fired before the form finished loading is what blanked a card once already. */
+function wireCapacityControls(c){
+  const pin = () => sessionStorage.getItem('admin-pin') || '';
+
+  // Small inline receipt next to the number box. A full reload takes seconds on
+  // Apps Script, so without it the secretary can't tell a saved edit from a lost one.
+  function mark(el, cls, text, title){
+    if(!el) return;
+    el.className = 'cap-state' + (cls ? ' ' + cls : '');
+    el.textContent = text;
+    if(title) el.title = title; else el.removeAttribute('title');
+  }
+
+  c.querySelectorAll('input[data-cap-input]').forEach(input => {
+    // Remember what the sheet had, so a failed save can put the box back rather
+    // than leaving a number on screen that was never stored.
+    input.dataset.prev = input.value;
+
+    input.addEventListener('keydown', e => { if(e.key === 'Enter') input.blur(); });
+
+    input.addEventListener('change', async () => {
+      const raw = input.value.trim();
+      const state = input.parentElement.querySelector('[data-cap-state]');
+      if(raw === input.dataset.prev) return;
+      if(raw !== '' && (isNaN(Number(raw)) || Number(raw) < 0)){
+        input.value = input.dataset.prev;
+        mark(state, 'failed', '✕', 'מספר לא תקין');
+        return;
+      }
+      if(!LIVE){ showErr('מצב דמו — הפעולה לא נשמרת.'); input.value = input.dataset.prev; return; }
+
+      input.disabled = true;
+      mark(state, '', '…');
+      const r = await apiCall('setSupervisorCapacity', {
+        adminPin: pin(), token: input.dataset.token,
+        maxStudents: raw === '' ? '' : String(Math.max(0, Math.floor(Number(raw))))
+      });
+      input.disabled = false;
+
+      if(!r || r.error){
+        input.value = input.dataset.prev;
+        mark(state, 'failed', '✕', actionErrorText(r, 'שמירה נכשלה: '));
+        showErr(actionErrorText(r, `עדכון הקיבולת של ${input.dataset.name || 'המדריך'} נכשל: `));
+        return;
+      }
+      input.dataset.prev = raw;
+      mark(state, 'saved', '✓');
+      // Crossing the capacity line moves the row between the "פנויים" and "מלאים"
+      // groups, so the table has to be rebuilt, not just repainted in place.
+      loadStats();
+    });
+  });
+
+  c.querySelectorAll('button[data-willing-action]').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const name = btn.dataset.name || 'המדריך';
+      const want = btn.dataset.willing !== 'true';   // flip
+      if(!LIVE){ showErr('מצב דמו — הפעולה לא נשמרת.'); return; }
+
+      btn.disabled = true;
+      const prev = btn.textContent;
+      btn.textContent = '…';
+      const r = await apiCall('setSupervisorCapacity', {
+        adminPin: pin(), token: btn.dataset.token, hasSpot: want ? 'true' : 'false'
+      });
+      if(!r || r.error){
+        btn.disabled = false;
+        btn.textContent = prev;
+        showErr(actionErrorText(r, `שינוי המתג של ${name} נכשל: `));
+        return;
+      }
+      // Say it out loud when the flip changed nothing a student can see. Turning the
+      // toggle on for a supervisor who is already full looks like it worked, and the
+      // secretary would otherwise wait for a card that is never going to appear.
+      if(want && r.atCapacity){
+        showErr(`${name}: המתג נפתח, אבל הקיבולת (${r.maxStudents}) מלאה — הכרטיס עדיין לא מוצג לתלמידים. להעלות את הקיבולת כדי שיופיע.`);
       }
       loadStats();
     });
@@ -921,7 +1046,8 @@ async function addOneStudent(){
     document.getElementById('newStudentName').value = '';
     document.getElementById('newStudentEmail').value = '';
     document.getElementById('newStudentPhone').value = '';
-  if(cohSel) cohSel.value = '';
+    const demoCoh = document.getElementById('newStudentCohort');
+    if(demoCoh) demoCoh.value = '';
     return;
   }
   // המחזור נלקח מהתפריט; התוכנית נגררת מהמחזור שנבחר בלשונית Cohorts, כדי שלא
@@ -972,7 +1098,14 @@ async function bulkAddStudentsAction(){
     alert(`נוספו ${added} תלמידים.`);
     return;
   }
-  const r = await apiCall('bulkAddStudents', {adminPin: sessionStorage.getItem('admin-pin') || '', names: text});
+  // המחזור נבחר פעם אחת לכל ההדבקה, והתוכנית נגררת ממנו — בדיוק כמו בהוספה בודדת,
+  // אחרת רשימה שלמה נכנסת בלי שנת לימוד.
+  const bulkCoh = (document.getElementById('bulkCohort') || {}).value || '';
+  const bulkMatch = ((lastData && lastData.cohorts) || []).find(c => c.cohort === bulkCoh);
+  const r = await apiCall('bulkAddStudents', {
+    adminPin: sessionStorage.getItem('admin-pin') || '', names: text,
+    cohort: bulkCoh, program: bulkMatch ? bulkMatch.program : ''
+  });
   btn.disabled = false; btn.textContent = 'הוסף את כולם';
   if(!r || r.error){
     showErr(actionErrorText(r, 'הוספה נכשלה: '));
@@ -980,7 +1113,7 @@ async function bulkAddStudentsAction(){
   }
   document.getElementById('bulkText').value = '';
   document.getElementById('bulkPaste').classList.remove('show');
-  alert(`נוספו ${r.added} תלמידים. דילוג על ${r.skipped} (כפילויות או שורות ריקות).`);
+  alert(`נוספו ${r.added} תלמידים${bulkCoh ? ' למחזור ' + bulkCoh : ' — ללא מחזור, כלומר בלי שנת לימוד'}. דילוג על ${r.skipped} (כפילויות או שורות ריקות).`);
   loadStats();
 }
 

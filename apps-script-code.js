@@ -100,6 +100,7 @@ function handleRequest(e) {
       case 'getParameters':          result = getParameters(params); break;
       case 'getAdminStats':          result = getAdminStats(params); break;
       case 'archiveSupervisor':      result = archiveSupervisor(params); break;
+      case 'setSupervisorCapacity':  result = setSupervisorCapacity(params); break;
       case 'deleteSupervisor':       result = deleteSupervisor(params); break;
       case 'getStudents':            result = getStudents(params); break;
       case 'addStudent':             result = addStudent(params); break;
@@ -454,6 +455,85 @@ function archiveSupervisor(p) {
     fullName: String(hit.row[hit.headers.indexOf('fullName')] || '')
   };
 }
+/**
+ * Admin-side control over a supervisor's availability — the same two settings the
+ * supervisor sets for themselves (the "יש לי מקום פנוי" toggle and the capacity
+ * number), but reachable from the dashboard.
+ *
+ * Exists because some supervisors never open their own card: not because they
+ * refuse, but because the link is buried in an old email or the form is one screen
+ * too many. Until now the only admin route to those two fields was opening the
+ * supervisor's own full-profile editor — which writes EVERY field on save, and
+ * saving it before it finishes loading is what blanked קארן לרנר's card. This
+ * writes exactly the cells named and touches nothing else, so it cannot lose data
+ * the way a full-profile save can.
+ *
+ * Idempotent by construction: both values are absolute sets, never deltas. That is
+ * why the client is allowed to retry it through Apps Script's flakiness.
+ *
+ * params: adminPin, token, [hasSpot: 'true'|'false'], [maxStudents: number | '']
+ */
+function setSupervisorCapacity(p) {
+  requireAdminPin(p);
+  ensureMaxStudentsColumn();
+
+  const token = String(p.token || '').trim();
+  if (!token) return { error: 'missing_token' };
+
+  const hit = findSupervisorRowByToken_(token);
+  if (!hit) return { error: 'not_found' };
+
+  // Only fields actually present in the request are written. An omitted field is
+  // left alone — so the toggle and the capacity number can be edited independently
+  // without either one clobbering the other.
+  const writes = {};
+
+  if (p.hasSpot !== undefined && String(p.hasSpot) !== '') {
+    writes.hasSpot = String(p.hasSpot) === 'true';
+  }
+
+  if (p.maxStudents !== undefined) {
+    const raw = String(p.maxStudents).trim();
+    if (raw === '') {
+      writes.maxStudents = '';                    // blank = no stated capacity, never auto-full
+    } else {
+      const n = Number(raw);
+      if (isNaN(n)) return { error: 'bad_max_students' };
+      writes.maxStudents = Math.max(0, Math.floor(n));
+    }
+  }
+
+  if (!Object.keys(writes).length) return { error: 'nothing_to_update' };
+
+  for (const k of Object.keys(writes)) {
+    const col = hit.headers.indexOf(k);
+    if (col < 0) return { error: 'missing_column', column: k };
+    hit.sheet.getRange(hit.rowNum, col + 1).setValue(writes[k]);
+  }
+  const updatedCol = hit.headers.indexOf('updated');
+  if (updatedCol >= 0) hit.sheet.getRange(hit.rowNum, updatedCol + 1).setValue(new Date().toISOString());
+
+  // Echo the resulting EFFECTIVE state back. The dashboard needs it because the two
+  // fields interact: turning the toggle on does not make a supervisor visible if they
+  // are already at capacity, and the secretary should see that immediately rather than
+  // after a reload that appears to have ignored her click.
+  const fresh = readSupervisorRows().find(function (r) { return String(r.token) === token; }) || {};
+  const placed = placedCountsByToken()[token] || 0;
+  const willing = fresh.hasSpot === true || fresh.hasSpot === 'TRUE' || fresh.hasSpot === 'true';
+
+  return {
+    ok: true,
+    token: token,
+    fullName: fresh.fullName || '',
+    willing: willing,
+    maxStudents: (fresh.maxStudents === '' || fresh.maxStudents == null) ? '' : Number(fresh.maxStudents),
+    placedCount: placed,
+    atCapacity: isAtCapacity(fresh, placed),
+    // What a student would see right now — consultation cards are never a supervision spot.
+    hasSpot: isConsultation(fresh) ? false : effectiveHasSpot(fresh, placed)
+  };
+}
+
 
 /**
  * Permanent delete. Removes the row entirely — there is no undo.
@@ -724,9 +804,15 @@ function deleteStudent(p) {
 }
 
 function bulkAddStudents(p) {
-  ensureStudentCohortColumns();   // כדי שהכותרות שנקראות למטה כוללות גם program/cohort
   requireAdminPin(p);
+  ensureStudentCohortColumns();   // כדי שהכותרות שנקראות למטה כוללות גם program/cohort
   const text = String(p.names || '');
+
+  // מחזור אחד לכל הרשימה. זה הרוב המוחלט של השימוש בהדבקה — מדביקים מחזור שלם,
+  // לא ערבוב. בלי זה כל מי שנוסף בהדבקה נחת בלי מחזור, כלומר בלי שנת לימוד,
+  // והופיע ב״ללא שנה״ עד שמישהו תיקן 30 שורות ביד.
+  const bulkCohort  = String(p.cohort || '').trim();
+  const bulkProgram = String(p.program || '').trim();
   // Each line = one student. Optional: "Name, email, phone" comma-separated.
   const lines = text.split(/\r?\n/).map(x => x.trim()).filter(Boolean);
   if (!lines.length) return { error: 'empty' };
@@ -755,7 +841,9 @@ function bulkAddStudents(p) {
       created: now,
       fullName: fullName,
       email: email,
-      phone: phone
+      phone: phone,
+      program: bulkProgram,
+      cohort: bulkCohort
     }));
     added++;
   }
@@ -768,7 +856,7 @@ function bulkAddStudents(p) {
       sheet.getRange(startRow, phoneCol + 1, newRows.length, 1).setNumberFormat('@');
     }
   }
-  return { ok: true, added, skipped };
+  return { ok: true, added, skipped, cohort: bulkCohort };
 }
 
 /* ========== Students (supervisor-facing — token-authenticated) ========== */
