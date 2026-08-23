@@ -1,0 +1,1700 @@
+/**
+ * Apps Script Backend — Supervisor Match
+ * בית הספר לפסיכותרפיה
+ *
+ * Deployment:
+ *   1. Open Google Sheet → Extensions → Apps Script
+ *   2. Paste this entire file into Code.gs (replace existing content)
+ *   3. Run setupSheets() once manually (creates required tabs)
+ *   4. Deploy → New deployment → Web app
+ *      - Execute as: Me
+ *      - Who has access: Anyone
+ *   5. Copy the deployment URL
+ *   6. Open the app and paste the URL into the setup screen
+ *
+ * Endpoints (all GET, query params):
+ *   ?action=verifyClassPin&pin=XXXX
+ *   ?action=verifyRegistrationCode&code=XXXX
+ *   ?action=registerSupervisor&name=...&email=...&code=...
+ *   ?action=getSupervisors&pin=XXXX           → published only
+ *   ?action=getSupervisor&token=XXX           → for editing (published or not)
+ *   ?action=saveSupervisor&token=XXX&data=URLENCODED_JSON
+ *   ?action=getParameters&pin=XXXX
+ */
+
+const TAB_SUPERVISORS = 'Supervisors';
+const TAB_PARAMETERS = 'Parameters';
+const TAB_SETTINGS = 'Settings';
+const TAB_STUDENTS = 'Students';
+// מיפוי מחזור→שנת לימוד. לשונית שהמנהלה מתחזקת: 3 שורות שמקדמים פעם בשנה,
+// במקום לעדכן את השנה בכל כרטיס תלמיד בנפרד.
+const TAB_COHORTS = 'Cohorts';
+
+const STUDENT_COLS = [
+  'id', 'created', 'fullName', 'email', 'phone',
+  // התוכנית והמחזור שהתלמיד/ה שייך/ת אליהם. ⭐ המחזור נשמר ולא השנה, בכוונה:
+  // 'מחזור ג' הוא עובדה שלא משתנה לעולם, בעוד 'שנה א' נכונה רק לשנה אחת —
+  // באלול הבא אותו מחזור הופך לשנה ב'. אחסון השנה היה מחייב לעבור על כל
+  // התלמידים כל שנה, וכל מי שהיה נשכח היה מוצג בשנה שגויה בלי שום סימן.
+  // השנה נגזרת מלשונית Cohorts — ראו cohortYear_().
+  'program',      // 'הדיאלוגי' וכו' — התוכנית שבה התלמיד/ה לומד/ת
+  'cohort',       // 'א'/'ב'/'ג' — המחזור. קבוע לכל אורך הלימודים
+  'placedWith',   // supervisor token, or empty if not placed
+  'placedDate',   // ISO date when placed, or empty
+  'notes'
+];
+
+const SUPERVISOR_COLS = [
+  'token', 'created', 'updated', 'published',
+  'fullName', 'credential', 'yearsSupervising',
+  'orientations', 'populations', 'specialties',
+  'styleText', 'format', 'area',
+  'availability', 'hasSpot',
+  'phone', 'whatsappEnabled', 'email',
+  'studentsAccepted',
+  'mailed',         // TRUE after claim/registration email sent
+  'maxStudents',    // capacity stated by supervisor (form, May 2026). ADMIN-ONLY — never sent to students.
+  'cardType',       // '' = supervision (default) | 'consultation' = focused psychiatric consultation, NOT supervision (admin-set). See ensureCardTypeColumn().
+  'archived'        // TRUE = kept on file but out of circulation this year. See ensureArchivedColumn().
+];
+
+// True when this card offers focused consultation (e.g. psychiatric) rather than supervision (הדרכה).
+function isConsultation(r) {
+  return String(r.cardType || '').trim() === 'consultation';
+}
+
+// Archived = "keep them for next year". The row stays on file with everything intact,
+// but the supervisor is out of circulation: invisible to students, excluded from every
+// count, and parked in their own group in the admin dashboard. Reversible at any time.
+// This is deliberately NOT the same as published=false — a draft is someone who hasn't
+// filled their profile in yet, an archive is someone deliberately set aside.
+function isArchived(r) {
+  return r.archived === true || String(r.archived).toUpperCase() === 'TRUE';
+}
+
+/* ========== Routing ========== */
+
+function doGet(e) {
+  return handleRequest(e);
+}
+
+function doPost(e) {
+  return handleRequest(e);
+}
+
+function handleRequest(e) {
+  const params = (e && e.parameter) || {};
+  const action = params.action || '';
+
+  try {
+    let result;
+    switch (action) {
+      case 'verifyClassPin':         result = verifyClassPin(params); break;
+      case 'verifyRegistrationCode': result = verifyRegistrationCode(params); break;
+      case 'verifyAdminPin':         result = verifyAdminPin(params); break;
+      case 'registerSupervisor':     result = registerSupervisor(params); break;
+      case 'claimSupervisor':        result = claimSupervisor(params); break;
+      case 'getSupervisors':         result = getSupervisors(params); break;
+      case 'getSupervisor':          result = getSupervisor(params); break;
+      case 'saveSupervisor':         result = saveSupervisor(params); break;
+      case 'getParameters':          result = getParameters(params); break;
+      case 'getAdminStats':          result = getAdminStats(params); break;
+      case 'archiveSupervisor':      result = archiveSupervisor(params); break;
+      case 'setSupervisorCapacity':  result = setSupervisorCapacity(params); break;
+      case 'deleteSupervisor':       result = deleteSupervisor(params); break;
+      case 'getStudents':            result = getStudents(params); break;
+      case 'addStudent':             result = addStudent(params); break;
+      case 'updateStudent':          result = updateStudent(params); break;
+      case 'deleteStudent':          result = deleteStudent(params); break;
+      case 'bulkAddStudents':        result = bulkAddStudents(params); break;
+      case 'getUnplacedStudents':    result = getUnplacedStudents(params); break;
+      case 'getMyPlacedStudents':    result = getMyPlacedStudents(params); break;
+      case 'claimStudent':           result = claimStudent(params); break;
+      case 'unclaimStudent':         result = unclaimStudent(params); break;
+      default:                       result = { error: 'unknown_action', action };
+    }
+    return jsonOut(result);
+  } catch (err) {
+    return jsonOut({ error: 'server_error', message: String(err) });
+  }
+}
+
+function jsonOut(obj) {
+  return ContentService.createTextOutput(JSON.stringify(obj))
+    .setMimeType(ContentService.MimeType.JSON);
+}
+
+/* ========== Auth ========== */
+
+function verifyClassPin(p) {
+  const expected = getSetting('classPin') || '2026';
+  return { valid: String(p.pin || '') === String(expected) };
+}
+
+function verifyRegistrationCode(p) {
+  const expected = getSetting('registrationCode') || 'CFGUSH26';
+  return { valid: String(p.code || '').toUpperCase() === String(expected).toUpperCase() };
+}
+
+function verifyAdminPin(p) {
+  const expected = getSetting('adminPin') || 'cfgush26admin';
+  return { valid: String(p.adminPin || '') === String(expected) };
+}
+
+function requireClassPin(p) {
+  if (!verifyClassPin(p).valid) throw new Error('invalid_pin');
+}
+
+function requireAdminPin(p) {
+  if (!verifyAdminPin(p).valid) throw new Error('invalid_admin_pin');
+}
+
+/* ========== Supervisor Registration ========== */
+
+function registerSupervisor(p) {
+  if (!verifyRegistrationCode({ code: p.code }).valid) {
+    return { error: 'invalid_code' };
+  }
+  const name = String(p.name || '').trim();
+  const email = String(p.email || '').trim();
+  if (!name || !email) return { error: 'missing_fields' };
+
+  const token = generateToken();
+  const sheet = getOrCreateSupervisorsSheet();
+  const now = new Date().toISOString();
+  const row = SUPERVISOR_COLS.map(col => {
+    if (col === 'token') return token;
+    if (col === 'created' || col === 'updated') return now;
+    if (col === 'published') return false;
+    if (col === 'fullName') return name;
+    if (col === 'email') return email;
+    if (col === 'hasSpot') return true;
+    if (col === 'whatsappEnabled') return false;
+    if (col === 'studentsAccepted') return 0;
+    if (col === 'mailed') return true;
+    return '';
+  });
+  sheet.appendRow(row);
+
+  const personalUrl = (getSetting('appBaseUrl') || '') + 'supervisor.html?token=' + token;
+  sendRegistrationEmail(email, name, personalUrl);
+
+  return { token, personalUrl };
+}
+
+/* ========== Supervisor Claim (for pre-imported supervisors) ========== */
+
+function claimSupervisor(p) {
+  const email = String(p.email || '').trim().toLowerCase();
+  const name = String(p.name || '').trim();
+  if (!email || !name) return { error: 'missing_fields' };
+
+  const rows = readSupervisorRows();
+  const match = rows.find(r => String(r.email || '').trim().toLowerCase() === email);
+
+  if (!match) return { error: 'not_found' };
+
+  // Loose name match: case-insensitive substring in either direction
+  const sheetName = String(match.fullName || '').trim();
+  const a = name.toLowerCase().replace(/["׳״]/g, '');
+  const b = sheetName.toLowerCase().replace(/["׳״]/g, '');
+  if (a !== b && !a.includes(b) && !b.includes(a)) {
+    return { error: 'name_mismatch' };
+  }
+
+  return { token: match.token, fullName: match.fullName };
+}
+
+function sendRegistrationEmail(toEmail, name, personalUrl) {
+  try {
+    const schoolName = getSetting('schoolName') || 'בית הספר לפסיכותרפיה';
+    MailApp.sendEmail({
+      to: toEmail,
+      subject: 'פרופיל מדריך — ' + schoolName,
+      htmlBody:
+        '<div dir="rtl" style="font-family:Arial,sans-serif;font-size:15px;line-height:1.6">' +
+        '<p>שלום ' + escapeHtml(name) + ',</p>' +
+        '<p>הפרופיל שלך נוצר במאגר המדריכים של ' + escapeHtml(schoolName) + '.</p>' +
+        '<p>הקישור האישי שלך לעריכת הפרופיל בכל זמן:</p>' +
+        '<p><a href="' + personalUrl + '">' + personalUrl + '</a></p>' +
+        '<p><b>חשוב:</b> שמור/שמרי את הקישור הזה. הוא משמש כסיסמה — מי שיש לו אותו יכול לערוך את הפרופיל.</p>' +
+        '<p>בהצלחה,<br>צוות בית הספר</p>' +
+        '</div>'
+    });
+  } catch (e) {
+    // email is best-effort; don't fail registration if mail fails
+  }
+}
+
+/* ========== Get Supervisors (public, for students) ========== */
+
+function getSupervisors(p) {
+  requireClassPin(p);
+  const rows = readSupervisorRows();
+  const counts = placedCountsByToken();
+  const published = rows.filter(r =>
+    (r.published === true || r.published === 'TRUE' || r.published === 'true') && !isArchived(r));
+  return { supervisors: published.map(r => toClientSupervisor(r, counts[r.token] || 0)) };
+}
+
+function publicSupervisorId(token) {
+  // Non-reversible public id derived from the token. The raw token is a password
+  // (it grants edit access via supervisor.html?token=...), so it must NEVER be sent
+  // to the student-facing client — a student could otherwise read it from the network
+  // response and open the supervisor's private editor (which shows student names).
+  if (!token) return '';
+  var bytes = Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, String(token));
+  return Utilities.base64EncodeWebSafe(bytes).replace(/[^A-Za-z0-9]/g, '').substring(0, 12);
+}
+
+/* ===== Capacity-based availability (auto-derived from placements) ===== */
+// Tally of placed students per supervisor token, from the Students roster.
+function placedCountsByToken() {
+  const counts = {};
+  readStudentRows().forEach(s => {
+    const t = String(s.placedWith || '').trim();
+    if (t) counts[t] = (counts[t] || 0) + 1;
+  });
+  return counts;
+}
+// True when the supervisor reached/exceeded their stated capacity (maxStudents).
+function isAtCapacity(r, placedCount) {
+  const max = (r.maxStudents === '' || r.maxStudents == null) ? null : Number(r.maxStudents);
+  return max !== null && !isNaN(max) && placedCount >= max;
+}
+// Effective availability shown anywhere: willing to take AND not yet full.
+function effectiveHasSpot(r, placedCount) {
+  const willing = r.hasSpot === true || r.hasSpot === 'TRUE' || r.hasSpot === 'true';
+  return willing && !isAtCapacity(r, placedCount || 0);
+}
+
+function toClientSupervisor(r, placedCount) {
+  return {
+    // Public, non-reversible id (hash of the token) — NOT the token itself. See
+    // publicSupervisorId(). The student page doesn't use this; kept for shape parity.
+    id: publicSupervisorId(r.token),
+    fullName: r.fullName,
+    credential: r.credential,
+    // yearsSupervising הוסר מהמנה הנשלחת לסטודנטים (בקשת הצוות, 19.8.26).
+    // לא רק שאינו מוצג — הוא אינו נשלח, כך שאי-אפשר לשלוף אותו מלשונית
+    // Network. הנתון נשמר בגיליון, המדריך ממשיך לערוך אותו ב-supervisor.html,
+    // ו-getAdminStats ממשיך לראות אותו לצד המנהלה.
+    orientations: splitList(r.orientations),
+    populations: splitList(r.populations),
+    specialties: splitList(r.specialties),
+    styleText: r.styleText,
+    format: r.format,
+    area: r.area,
+    availability: parseAvailability(r.availability),
+    // '' = supervision (default) | 'consultation' = focused psychiatric consultation (not הדרכה).
+    cardType: r.cardType || '',
+    // Auto: willing AND under capacity. A full supervisor shows as no-spot to students.
+    // Consultation cards have no supervision "spot" concept → always false (the UI shows a
+    // consultation badge instead of a spot pill, and they're excluded from the spot filter).
+    hasSpot: isConsultation(r) ? false : effectiveHasSpot(r, placedCount || 0),
+    contact: {
+      phone: r.phone || '',
+      whatsappEnabled: r.whatsappEnabled === true || r.whatsappEnabled === 'TRUE' || r.whatsappEnabled === 'true',
+      email: r.email || ''
+    }
+  };
+}
+
+/* ========== Get / Save One Supervisor (by token) ========== */
+
+function getSupervisor(p) {
+  const token = String(p.token || '');
+  if (!token) return { error: 'missing_token' };
+  const rows = readSupervisorRows();
+  const r = rows.find(x => x.token === token);
+  if (!r) return { error: 'not_found' };
+  const myPlaced = placedCountsByToken()[token] || 0;
+  return {
+    profile: {
+      fullName: r.fullName,
+      credential: r.credential,
+      yearsSupervising: Number(r.yearsSupervising) || '',
+      orientations: splitList(r.orientations),
+      populations: splitList(r.populations),
+      specialties: splitList(r.specialties),
+      styleText: r.styleText,
+      format: r.format,
+      area: r.area,
+      availability: parseAvailability(r.availability),
+      hasSpot: r.hasSpot === true || r.hasSpot === 'TRUE' || r.hasSpot === 'true',
+      contact: {
+        phone: r.phone || '',
+        whatsappEnabled: r.whatsappEnabled === true || r.whatsappEnabled === 'TRUE' || r.whatsappEnabled === 'true',
+        email: r.email || ''
+      },
+      published: r.published === true || r.published === 'TRUE' || r.published === 'true',
+      studentsAccepted: Number(r.studentsAccepted) || 0,
+      maxStudents: r.maxStudents === '' || r.maxStudents == null ? '' : Number(r.maxStudents),
+      cardType: r.cardType || '',                // '' = supervision | 'consultation' = psychiatric consultation
+      placedCount: myPlaced,                    // live: students actually assigned to me
+      atCapacity: isAtCapacity(r, myPlaced)     // reached my stated capacity
+    }
+  };
+}
+
+function saveSupervisor(p) {
+  const token = String(p.token || '');
+  if (!token) return { error: 'missing_token' };
+
+  let data;
+  try {
+    data = JSON.parse(p.data || '{}');
+  } catch (e) {
+    return { error: 'bad_json' };
+  }
+
+  ensureMaxStudentsColumn();
+  ensureCardTypeColumn();
+  const sheet = getOrCreateSupervisorsSheet();
+  const allValues = sheet.getDataRange().getValues();
+  const headers = allValues[0];
+  const tokenCol = headers.indexOf('token');
+  if (tokenCol < 0) return { error: 'schema_error' };
+
+  let rowIdx = -1;
+  for (let i = 1; i < allValues.length; i++) {
+    if (String(allValues[i][tokenCol]) === token) { rowIdx = i + 1; break; }
+  }
+  if (rowIdx < 0) return { error: 'not_found' };
+
+  const c = data.contact || {};
+  const updates = {
+    updated: new Date().toISOString(),
+    fullName: data.fullName || '',
+    credential: data.credential || '',
+    yearsSupervising: data.yearsSupervising || '',
+    orientations: joinList(data.orientations),
+    populations: joinList(data.populations),
+    specialties: joinList(data.specialties),
+    styleText: data.styleText || '',
+    format: data.format || '',
+    area: data.area || '',
+    availability: JSON.stringify(data.availability || {}),
+    hasSpot: !!data.hasSpot,
+    phone: c.phone || '',
+    whatsappEnabled: !!c.whatsappEnabled,
+    email: c.email || '',
+    published: !!data.published,
+    studentsAccepted: Math.max(0, Number(data.studentsAccepted) || 0),
+    maxStudents: (data.maxStudents === '' || data.maxStudents == null) ? '' : Math.max(0, Number(data.maxStudents) || 0)
+  };
+
+  // cardType is admin-set and the supervisor editor doesn't send it. Only update it when the
+  // client explicitly provides it — otherwise an ordinary profile save would erase the flag.
+  if (data.cardType !== undefined) {
+    updates.cardType = (String(data.cardType).trim() === 'consultation') ? 'consultation' : '';
+  }
+
+  for (const [k, v] of Object.entries(updates)) {
+    const col = headers.indexOf(k);
+    if (col < 0) continue;
+    const cell = sheet.getRange(rowIdx, col + 1);
+    // Force phone column to text format so leading zeros are preserved
+    if (k === 'phone' && v) {
+      cell.setNumberFormat('@');
+      cell.setValue(String(v));
+    } else {
+      cell.setValue(v);
+    }
+  }
+
+  return { ok: true };
+}
+
+/* ========== Remove a supervisor — archive (reversible) or delete (permanent) ========== */
+
+/**
+ * Locate a supervisor row by token. Returns {rowNum, row, headers, sheet} or null.
+ * Token, not name — names repeat and get retyped; the token is the row's identity.
+ */
+function findSupervisorRowByToken_(token) {
+  const sheet = getOrCreateSupervisorsSheet();
+  const data = sheet.getDataRange().getValues();
+  const headers = data[0];
+  const tokenCol = headers.indexOf('token');
+  if (tokenCol < 0) return null;
+  for (let i = 1; i < data.length; i++) {
+    if (String(data[i][tokenCol]).trim() === String(token).trim()) {
+      return { rowNum: i + 1, row: data[i], headers: headers, sheet: sheet };
+    }
+  }
+  return null;
+}
+
+/**
+ * Archive / restore. The reversible one — "keep them for next year".
+ * Everything on the row is preserved; the supervisor just leaves circulation.
+ * params: adminPin, token, archived ('true' | 'false')
+ */
+function archiveSupervisor(p) {
+  requireAdminPin(p);
+  ensureArchivedColumn();
+
+  const token = String(p.token || '').trim();
+  if (!token) return { error: 'missing_token' };
+
+  const hit = findSupervisorRowByToken_(token);
+  if (!hit) return { error: 'not_found' };
+
+  const wantArchived = String(p.archived) === 'true';
+  const col = hit.headers.indexOf('archived');
+  if (col < 0) return { error: 'no_archived_column' };
+
+  hit.sheet.getRange(hit.rowNum, col + 1).setValue(wantArchived);
+  const updatedCol = hit.headers.indexOf('updated');
+  if (updatedCol >= 0) hit.sheet.getRange(hit.rowNum, updatedCol + 1).setValue(new Date().toISOString());
+
+  return {
+    ok: true,
+    archived: wantArchived,
+    fullName: String(hit.row[hit.headers.indexOf('fullName')] || '')
+  };
+}
+/**
+ * Admin-side control over a supervisor's availability — the same two settings the
+ * supervisor sets for themselves (the "יש לי מקום פנוי" toggle and the capacity
+ * number), but reachable from the dashboard.
+ *
+ * Exists because some supervisors never open their own card: not because they
+ * refuse, but because the link is buried in an old email or the form is one screen
+ * too many. Until now the only admin route to those two fields was opening the
+ * supervisor's own full-profile editor — which writes EVERY field on save, and
+ * saving it before it finishes loading is what blanked קארן לרנר's card. This
+ * writes exactly the cells named and touches nothing else, so it cannot lose data
+ * the way a full-profile save can.
+ *
+ * Idempotent by construction: both values are absolute sets, never deltas. That is
+ * why the client is allowed to retry it through Apps Script's flakiness.
+ *
+ * params: adminPin, token, [hasSpot: 'true'|'false'], [maxStudents: number | '']
+ */
+function setSupervisorCapacity(p) {
+  requireAdminPin(p);
+  ensureMaxStudentsColumn();
+
+  const token = String(p.token || '').trim();
+  if (!token) return { error: 'missing_token' };
+
+  const hit = findSupervisorRowByToken_(token);
+  if (!hit) return { error: 'not_found' };
+
+  // Only fields actually present in the request are written. An omitted field is
+  // left alone — so the toggle and the capacity number can be edited independently
+  // without either one clobbering the other.
+  const writes = {};
+
+  if (p.hasSpot !== undefined && String(p.hasSpot) !== '') {
+    writes.hasSpot = String(p.hasSpot) === 'true';
+  }
+
+  if (p.maxStudents !== undefined) {
+    const raw = String(p.maxStudents).trim();
+    if (raw === '') {
+      writes.maxStudents = '';                    // blank = no stated capacity, never auto-full
+    } else {
+      const n = Number(raw);
+      if (isNaN(n)) return { error: 'bad_max_students' };
+      writes.maxStudents = Math.max(0, Math.floor(n));
+    }
+  }
+
+  if (!Object.keys(writes).length) return { error: 'nothing_to_update' };
+
+  for (const k of Object.keys(writes)) {
+    const col = hit.headers.indexOf(k);
+    if (col < 0) return { error: 'missing_column', column: k };
+    hit.sheet.getRange(hit.rowNum, col + 1).setValue(writes[k]);
+  }
+  const updatedCol = hit.headers.indexOf('updated');
+  if (updatedCol >= 0) hit.sheet.getRange(hit.rowNum, updatedCol + 1).setValue(new Date().toISOString());
+
+  // Echo the resulting EFFECTIVE state back. The dashboard needs it because the two
+  // fields interact: turning the toggle on does not make a supervisor visible if they
+  // are already at capacity, and the secretary should see that immediately rather than
+  // after a reload that appears to have ignored her click.
+  const fresh = readSupervisorRows().find(function (r) { return String(r.token) === token; }) || {};
+  const placed = placedCountsByToken()[token] || 0;
+  const willing = fresh.hasSpot === true || fresh.hasSpot === 'TRUE' || fresh.hasSpot === 'true';
+
+  return {
+    ok: true,
+    token: token,
+    fullName: fresh.fullName || '',
+    willing: willing,
+    maxStudents: (fresh.maxStudents === '' || fresh.maxStudents == null) ? '' : Number(fresh.maxStudents),
+    placedCount: placed,
+    atCapacity: isAtCapacity(fresh, placed),
+    // What a student would see right now — consultation cards are never a supervision spot.
+    hasSpot: isConsultation(fresh) ? false : effectiveHasSpot(fresh, placed)
+  };
+}
+
+
+/**
+ * Permanent delete. Removes the row entirely — there is no undo.
+ *
+ * Refuses while students are still placed with this supervisor: their `placedWith`
+ * holds this token, so deleting the row would leave them pointing at nothing and the
+ * dashboard would quietly under-count placements. The secretary has to release those
+ * students first, which is the correct order of operations anyway.
+ *
+ * params: adminPin, token
+ */
+function deleteSupervisor(p) {
+  requireAdminPin(p);
+
+  const token = String(p.token || '').trim();
+  if (!token) return { error: 'missing_token' };
+
+  const hit = findSupervisorRowByToken_(token);
+  if (!hit) return { error: 'not_found' };
+
+  const placedNames = readStudentRows()
+    .filter(s => String(s.placedWith || '').trim() === token)
+    .map(s => s.fullName || '(ללא שם)');
+
+  if (placedNames.length > 0) {
+    return {
+      error: 'has_placed_students',
+      count: placedNames.length,
+      students: placedNames,
+      message: 'יש ' + placedNames.length + ' תלמידים שמשובצים למדריך הזה. ' +
+               'צריך לשחרר אותם קודם (או להעביר למדריך אחר), ואז אפשר למחוק.'
+    };
+  }
+
+  const fullName = String(hit.row[hit.headers.indexOf('fullName')] || '');
+  hit.sheet.deleteRow(hit.rowNum);
+  return { ok: true, deleted: true, fullName: fullName };
+}
+
+/* ========== Admin Stats ========== */
+
+function getAdminStats(p) {
+  requireAdminPin(p);
+  ensureMaxStudentsColumn();
+  ensureCardTypeColumn();
+  ensureArchivedColumn();
+  ensureStudentCohortColumns();
+  const rows = readSupervisorRows();
+  const students = readStudentRows();
+  const cohortList = readCohorts_();   // פעם אחת לכל הבקשה
+  // רשימת המחזורים הפעילים נשלחת למנהלה כדי שהתפריטים ייבנו ממנה ולא מקבועים בקוד.
+  const activeCohorts = cohortList.filter(c => c.active)
+    .sort((a, b) => a.year - b.year);
+
+  // Build supervisor token → name lookup
+  const supByToken = {};
+  rows.forEach(r => { if (r.token) supByToken[r.token] = r; });
+
+  // Student-level placement tally (authoritative once students are tracked)
+  const placedPerSupervisor = {};
+  let placedCount = 0;
+  students.forEach(s => {
+    if (s.placedWith) {
+      placedCount++;
+      placedPerSupervisor[s.placedWith] = (placedPerSupervisor[s.placedWith] || 0) + 1;
+    }
+  });
+
+  let publishedCount = 0;
+  let withSpotCount = 0;
+  let totalAccepted = 0;
+
+  const supervisors = rows.map(r => {
+    const published = r.published === true || r.published === 'TRUE' || r.published === 'true';
+    const consultation = isConsultation(r);
+    const archived = isArchived(r);
+    const willing = r.hasSpot === true || r.hasSpot === 'TRUE' || r.hasSpot === 'true';
+    const selfReported = Number(r.studentsAccepted) || 0;
+    const placedFromList = placedPerSupervisor[r.token] || 0;
+    // If we have student records, prefer them; otherwise fall back to self-report
+    const accepted = students.length > 0 ? placedFromList : selfReported;
+    const atCapacity = isAtCapacity(r, placedFromList);
+    // Consultation cards aren't supervision spots — never counted as available capacity.
+    // Archived supervisors are out of circulation entirely: not published-count, not
+    // available-count. Their past placements still count toward totalAccepted, because
+    // those students really were placed and the roster shouldn't silently lose them.
+    const available = !consultation && !archived && willing && !atCapacity;
+    if (published && !archived) publishedCount++;
+    if (available) withSpotCount++;
+    totalAccepted += accepted;
+    return {
+      token: r.token || '',
+      fullName: r.fullName || '(ללא שם)',
+      credential: r.credential || '',
+      published,
+      archived,                  // parked for a future year — admin-only concept
+      cardType: r.cardType || '',  // '' = supervision | 'consultation' = psychiatric consultation
+      hasSpot: available,        // effective (drives grouping + badge)
+      willing,                   // the supervisor's manual toggle
+      atCapacity,                // reached maxStudents
+      studentsAccepted: accepted,
+      selfReportedAccepted: selfReported,
+      maxStudents: (r.maxStudents === '' || r.maxStudents == null) ? '' : Number(r.maxStudents),
+      email: r.email || '',
+      phone: r.phone || ''
+    };
+  });
+
+  supervisors.sort((a, b) => (b.studentsAccepted - a.studentsAccepted) || a.fullName.localeCompare(b.fullName));
+
+  // Source of truth: if student list exists, use its count; otherwise the legacy expectedStudents setting.
+  const expectedStudents = students.length > 0 ? students.length : (Number(getSetting('expectedStudents')) || 0);
+  const totalForRemaining = students.length > 0 ? placedCount : totalAccepted;
+
+  return {
+    summary: {
+      // Archived supervisors are excluded from the headline count — they're on file,
+      // not in this year's roster. archivedCount surfaces them separately so they
+      // don't just silently vanish from the dashboard's totals.
+      totalSupervisors: rows.filter(r => !isArchived(r)).length,
+      archivedCount: rows.filter(r => isArchived(r)).length,
+      publishedCount,
+      withSpotCount,
+      totalAccepted: students.length > 0 ? placedCount : totalAccepted,
+      expectedStudents,
+      remaining: Math.max(0, expectedStudents - totalForRemaining),
+      hasStudentList: students.length > 0
+    },
+    supervisors,
+    // המחזורים הפעילים — כדי שהתפריטים והקיבוץ במנהלה ייבנו מהלשונית ולא מקוד.
+    cohorts: activeCohorts,
+    students: students.map(s => ({
+      id: s.id,
+      fullName: s.fullName,
+      email: s.email || '',
+      phone: s.phone || '',
+      placedWith: s.placedWith || '',
+      placedWithName: s.placedWith && supByToken[s.placedWith] ? supByToken[s.placedWith].fullName : '',
+      placedDate: s.placedDate || '',
+      notes: s.notes || '',
+      program: s.program || '',
+      cohort: s.cohort || '',
+      year: cohortYear_(s.program, s.cohort, cohortList)
+    }))
+  };
+}
+
+/* ========== Students (admin-managed roster) ========== */
+
+function getStudents(p) {
+  requireAdminPin(p);
+  ensureStudentCohortColumns();
+  const rows = readStudentRows();
+  const sup = readSupervisorRows();
+  const cohorts = readCohorts_();   // נקרא פעם אחת, לא פעם לכל תלמיד
+  const supByToken = {};
+  sup.forEach(r => { if (r.token) supByToken[r.token] = r.fullName || ''; });
+  return {
+    students: rows.map(s => ({
+      id: s.id,
+      fullName: s.fullName,
+      email: s.email || '',
+      phone: s.phone || '',
+      placedWith: s.placedWith || '',
+      placedWithName: s.placedWith ? (supByToken[s.placedWith] || '') : '',
+      placedDate: s.placedDate || '',
+      notes: s.notes || '',
+      created: s.created || '',
+      program: s.program || '',
+      cohort: s.cohort || '',
+      // נגזר מלשונית Cohorts ולא נשמר בשורה — ראו ההערה ב-STUDENT_COLS.
+      year: cohortYear_(s.program, s.cohort, cohorts)
+    }))
+  };
+}
+
+function addStudent(p) {
+  requireAdminPin(p);
+  const fullName = String(p.fullName || '').trim();
+  if (!fullName) return { error: 'missing_name' };
+  ensureStudentCohortColumns();
+  const sheet = getOrCreateStudentsSheet();
+  const id = generateStudentId();
+  const now = new Date().toISOString();
+  const row = studentRowForSheet_(sheet, {
+    id: id,
+    created: now,
+    fullName: fullName,
+    email: String(p.email || '').trim(),
+    phone: String(p.phone || '').trim(),
+    program: String(p.program || '').trim(),
+    cohort: String(p.cohort || '').trim(),
+    placedWith: String(p.placedWith || '').trim(),
+    placedDate: p.placedWith ? now : '',
+    notes: String(p.notes || '').trim()
+  });
+  sheet.appendRow(row);
+  // Force phone column to text (index taken from the sheet, not the schema)
+  const phoneCol = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0].indexOf('phone');
+  if (phoneCol >= 0 && p.phone) {
+    const r = sheet.getLastRow();
+    sheet.getRange(r, phoneCol + 1).setNumberFormat('@').setValue(String(p.phone).trim());
+  }
+  return { ok: true, id };
+}
+
+function updateStudent(p) {
+  requireAdminPin(p);
+  const id = String(p.id || '');
+  if (!id) return { error: 'missing_id' };
+  const sheet = getOrCreateStudentsSheet();
+  const values = sheet.getDataRange().getValues();
+  const headers = values[0];
+  const idCol = headers.indexOf('id');
+  if (idCol < 0) return { error: 'schema_error' };
+
+  let rowIdx = -1;
+  for (let i = 1; i < values.length; i++) {
+    if (String(values[i][idCol]) === id) { rowIdx = i + 1; break; }
+  }
+  if (rowIdx < 0) return { error: 'not_found' };
+
+  const updatable = ['fullName', 'email', 'phone', 'placedWith', 'notes', 'program', 'cohort'];
+  for (const k of updatable) {
+    if (p[k] === undefined) continue;
+    const col = headers.indexOf(k);
+    if (col < 0) continue;
+    const v = String(p[k] == null ? '' : p[k]).trim();
+    const cell = sheet.getRange(rowIdx, col + 1);
+    if (k === 'phone') {
+      cell.setNumberFormat('@').setValue(v);
+    } else {
+      cell.setValue(v);
+    }
+  }
+  // If placedWith was set, stamp placedDate (or clear it when unassigned)
+  if (p.placedWith !== undefined) {
+    const dateCol = headers.indexOf('placedDate');
+    if (dateCol >= 0) {
+      const newPlaced = String(p.placedWith || '').trim();
+      const prev = String(values[rowIdx - 1][headers.indexOf('placedWith')] || '').trim();
+      if (newPlaced && newPlaced !== prev) {
+        sheet.getRange(rowIdx, dateCol + 1).setValue(new Date().toISOString());
+      } else if (!newPlaced) {
+        sheet.getRange(rowIdx, dateCol + 1).setValue('');
+      }
+    }
+  }
+  return { ok: true };
+}
+
+function deleteStudent(p) {
+  requireAdminPin(p);
+  const id = String(p.id || '');
+  if (!id) return { error: 'missing_id' };
+  const sheet = getOrCreateStudentsSheet();
+  const values = sheet.getDataRange().getValues();
+  const headers = values[0];
+  const idCol = headers.indexOf('id');
+  if (idCol < 0) return { error: 'schema_error' };
+  for (let i = 1; i < values.length; i++) {
+    if (String(values[i][idCol]) === id) {
+      sheet.deleteRow(i + 1);
+      return { ok: true };
+    }
+  }
+  return { error: 'not_found' };
+}
+
+function bulkAddStudents(p) {
+  requireAdminPin(p);
+  ensureStudentCohortColumns();   // כדי שהכותרות שנקראות למטה כוללות גם program/cohort
+  const text = String(p.names || '');
+
+  // מחזור אחד לכל הרשימה. זה הרוב המוחלט של השימוש בהדבקה — מדביקים מחזור שלם,
+  // לא ערבוב. בלי זה כל מי שנוסף בהדבקה נחת בלי מחזור, כלומר בלי שנת לימוד,
+  // והופיע ב״ללא שנה״ עד שמישהו תיקן 30 שורות ביד.
+  const bulkCohort  = String(p.cohort || '').trim();
+  const bulkProgram = String(p.program || '').trim();
+  // Each line = one student. Optional: "Name, email, phone" comma-separated.
+  const lines = text.split(/\r?\n/).map(x => x.trim()).filter(Boolean);
+  if (!lines.length) return { error: 'empty' };
+
+  const sheet = getOrCreateStudentsSheet();
+  const existing = readStudentRows();
+  const existingNames = new Set(existing.map(s => String(s.fullName || '').trim().toLowerCase()));
+  const existingEmails = new Set(existing.map(s => String(s.email || '').trim().toLowerCase()).filter(Boolean));
+
+  let added = 0, skipped = 0;
+  const now = new Date().toISOString();
+  const newRows = [];
+  for (const line of lines) {
+    const parts = line.split(',').map(x => x.trim());
+    const fullName = parts[0] || '';
+    const email = parts[1] || '';
+    const phone = parts[2] || '';
+    if (!fullName) { skipped++; continue; }
+    const nameKey = fullName.toLowerCase();
+    const emailKey = email.toLowerCase();
+    if (existingNames.has(nameKey) || (emailKey && existingEmails.has(emailKey))) { skipped++; continue; }
+    existingNames.add(nameKey);
+    if (emailKey) existingEmails.add(emailKey);
+    newRows.push(studentRowForSheet_(sheet, {
+      id: generateStudentId(),
+      created: now,
+      fullName: fullName,
+      email: email,
+      phone: phone,
+      program: bulkProgram,
+      cohort: bulkCohort
+    }));
+    added++;
+  }
+  if (newRows.length) {
+    const startRow = sheet.getLastRow() + 1;
+    const hdrs = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+    sheet.getRange(startRow, 1, newRows.length, hdrs.length).setValues(newRows);
+    const phoneCol = hdrs.indexOf('phone');
+    if (phoneCol >= 0) {
+      sheet.getRange(startRow, phoneCol + 1, newRows.length, 1).setNumberFormat('@');
+    }
+  }
+  return { ok: true, added, skipped, cohort: bulkCohort };
+}
+
+/* ========== Students (supervisor-facing — token-authenticated) ========== */
+
+function requireSupervisorToken(p) {
+  const token = String(p.token || '');
+  if (!token) throw new Error('missing_token');
+  const rows = readSupervisorRows();
+  const sup = rows.find(r => String(r.token) === token);
+  if (!sup) throw new Error('invalid_token');
+  return sup;
+}
+
+function getUnplacedStudents(p) {
+  requireSupervisorToken(p);
+  const rows = readStudentRows();
+  const unplaced = rows.filter(s => !String(s.placedWith || '').trim());
+  // Sort alphabetically
+  unplaced.sort((a, b) => String(a.fullName).localeCompare(String(b.fullName)));
+  return {
+    students: unplaced.map(s => ({ id: s.id, fullName: s.fullName }))
+  };
+}
+
+function getMyPlacedStudents(p) {
+  const sup = requireSupervisorToken(p);
+  const rows = readStudentRows();
+  const mine = rows.filter(s => String(s.placedWith || '').trim() === sup.token);
+  mine.sort((a, b) => String(a.fullName).localeCompare(String(b.fullName)));
+  return {
+    students: mine.map(s => ({
+      id: s.id,
+      fullName: s.fullName,
+      placedDate: s.placedDate || ''
+    }))
+  };
+}
+
+function claimStudent(p) {
+  const sup = requireSupervisorToken(p);
+  const id = String(p.id || '');
+  if (!id) return { error: 'missing_id' };
+  const sheet = getOrCreateStudentsSheet();
+  const values = sheet.getDataRange().getValues();
+  const headers = values[0];
+  const idCol = headers.indexOf('id');
+  const placedCol = headers.indexOf('placedWith');
+  const dateCol = headers.indexOf('placedDate');
+  if (idCol < 0 || placedCol < 0) return { error: 'schema_error' };
+
+  for (let i = 1; i < values.length; i++) {
+    if (String(values[i][idCol]) === id) {
+      const current = String(values[i][placedCol] || '').trim();
+      // Refuse if already claimed by someone else (race protection)
+      if (current && current !== sup.token) {
+        return { error: 'already_claimed' };
+      }
+      sheet.getRange(i + 1, placedCol + 1).setValue(sup.token);
+      if (dateCol >= 0) sheet.getRange(i + 1, dateCol + 1).setValue(new Date().toISOString());
+      return { ok: true };
+    }
+  }
+  return { error: 'not_found' };
+}
+
+function unclaimStudent(p) {
+  const sup = requireSupervisorToken(p);
+  const id = String(p.id || '');
+  if (!id) return { error: 'missing_id' };
+  const sheet = getOrCreateStudentsSheet();
+  const values = sheet.getDataRange().getValues();
+  const headers = values[0];
+  const idCol = headers.indexOf('id');
+  const placedCol = headers.indexOf('placedWith');
+  const dateCol = headers.indexOf('placedDate');
+  if (idCol < 0 || placedCol < 0) return { error: 'schema_error' };
+
+  for (let i = 1; i < values.length; i++) {
+    if (String(values[i][idCol]) === id) {
+      const current = String(values[i][placedCol] || '').trim();
+      // Only the supervisor who claimed can release
+      if (current !== sup.token) {
+        return { error: 'not_yours' };
+      }
+      sheet.getRange(i + 1, placedCol + 1).setValue('');
+      if (dateCol >= 0) sheet.getRange(i + 1, dateCol + 1).setValue('');
+      return { ok: true };
+    }
+  }
+  return { error: 'not_found' };
+}
+
+function readStudentRows() {
+  const sheet = getOrCreateStudentsSheet();
+  const values = sheet.getDataRange().getValues();
+  if (values.length < 2) return [];
+  const headers = values[0];
+  return values.slice(1).filter(row => row[headers.indexOf('id')]).map(row => {
+    const obj = {};
+    headers.forEach((h, i) => { obj[h] = row[i]; });
+    return obj;
+  });
+}
+
+/* ========== Cohorts → study year ========== */
+
+const COHORT_COLS = ['program', 'cohort', 'year', 'active'];
+
+// ⭐ למה לשונית ולא מפה בקוד: הסקריפט הזה דורש Redeploy ידני בכל שינוי, ולכן
+// מיפוי בקוד היה הופך את גלגול השנה לפעולת מתכנת. בלשונית טל מקדמת שלושה
+// מספרים בעצמה, בלי אף פריסה.
+function getOrCreateCohortsSheet() {
+  const ss = SpreadsheetApp.getActive();
+  let sheet = ss.getSheetByName(TAB_COHORTS);
+  if (!sheet) {
+    sheet = ss.insertSheet(TAB_COHORTS);
+    sheet.appendRow(COHORT_COLS);
+    sheet.setFrozenRows(1);
+    // מצב תשפ"ז: מחזור ג הוא שנה א, ב הוא שנה ב, א הוא שנה ג. היחס הפוך
+    // מפני שמחזור מוקדם יותר מתקדם יותר בלימודים.
+    sheet.appendRow(['הדיאלוגי', 'ג', 1, true]);
+    sheet.appendRow(['הדיאלוגי', 'ב', 2, true]);
+    sheet.appendRow(['הדיאלוגי', 'א', 3, true]);
+    sheet.getRange(1, 1, 1, COHORT_COLS.length).setFontWeight('bold');
+  }
+  return sheet;
+}
+
+function readCohorts_() {
+  const values = getOrCreateCohortsSheet().getDataRange().getValues();
+  if (values.length < 2) return [];
+  const h = values[0];
+  return values.slice(1)
+    .filter(r => String(r[h.indexOf('cohort')] || '').trim())
+    .map(r => ({
+      program: String(r[h.indexOf('program')] || '').trim(),
+      cohort:  String(r[h.indexOf('cohort')]  || '').trim(),
+      year:    Number(r[h.indexOf('year')]) || 0,
+      active:  r[h.indexOf('active')] === true || String(r[h.indexOf('active')]).toUpperCase() === 'TRUE'
+    }));
+}
+
+// שנת הלימוד של תלמיד/ה. מחזיר 0 כשאין התאמה — ואת זה המנהלה רואה כ'—',
+// כדי שמחזור שלא מופיע בלשונית ייראה כחסר ולא יקבל בשקט שנה שגויה.
+function cohortYear_(program, cohort, cohorts) {
+  const prog = String(program || '').trim();
+  const coh  = String(cohort  || '').trim();
+  if (!coh) return 0;
+  const list = cohorts || readCohorts_();
+  const hit = list.filter(c => c.cohort === coh && (!c.program || !prog || c.program === prog))[0];
+  return hit ? hit.year : 0;
+}
+
+// הגירה עצמית, באותה תבנית של ensureMaxStudentsColumn: מוסיפה את העמודות
+// החסרות בסוף הלשונית כדי לא להזיז נתונים קיימים. בטוח להריץ שוב ושוב.
+// ⚠⚠ סדר העמודות בגיליון אינו זהה לסדר ב-STUDENT_COLS, ולעולם לא יהיה:
+// עמודות חדשות מתווספות בסוף הלשונית (כדי לא להזיז נתונים קיימים), בעוד
+// שבסכימה הן ממוקמות במקום ההגיוני שלהן. לכן כתיבה עם appendRow לפי סדר
+// הסכימה מכניסה כל ערך לעמודה הלא נכונה — למשל program לתוך placedWith,
+// מה שהיה הופך כל תלמיד חדש ל"משובץ" אצל טוקן שאינו קיים.
+// הפונקציה הזאת ממפה לפי שם הכותרת, כמו lineForSheet_ במעקב הפניות.
+function studentRowForSheet_(sheet, obj) {
+  const lastCol = sheet.getLastColumn();
+  const headers = sheet.getRange(1, 1, 1, lastCol).getValues()[0];
+  return headers.map(h => {
+    const key = String(h || '').trim();
+    return Object.prototype.hasOwnProperty.call(obj, key) ? obj[key] : '';
+  });
+}
+
+
+function ensureStudentCohortColumns() {
+  const sheet = getOrCreateStudentsSheet();
+  const lastCol = sheet.getLastColumn();
+  const headers = sheet.getRange(1, 1, 1, lastCol).getValues()[0];
+  let next = lastCol;
+  ['program', 'cohort'].forEach(col => {
+    if (headers.indexOf(col) >= 0) return;
+    next++;
+    sheet.getRange(1, next).setValue(col);
+    Logger.log('Added "' + col + '" column to Students. Existing rows left blank.');
+  });
+}
+
+function getOrCreateStudentsSheet() {
+  const ss = SpreadsheetApp.getActive();
+  let sheet = ss.getSheetByName(TAB_STUDENTS);
+  if (!sheet) {
+    sheet = ss.insertSheet(TAB_STUDENTS);
+    sheet.appendRow(STUDENT_COLS);
+    sheet.setFrozenRows(1);
+  } else {
+    const firstRow = sheet.getRange(1, 1, 1, STUDENT_COLS.length).getValues()[0];
+    if (!firstRow[0]) sheet.getRange(1, 1, 1, STUDENT_COLS.length).setValues([STUDENT_COLS]);
+  }
+  return sheet;
+}
+
+function generateStudentId() {
+  return 's' + Date.now().toString(36) + Math.floor(Math.random() * 1000).toString(36);
+}
+
+/* ========== Parameters ========== */
+
+function getParameters(p) {
+  requireClassPin(p);
+  const sheet = getOrCreateParametersSheet();
+  const values = sheet.getDataRange().getValues();
+  const out = {};
+  for (let i = 1; i < values.length; i++) {
+    const [field, option] = values[i];
+    if (!field || !option) continue;
+    if (!out[field]) out[field] = [];
+    out[field].push(option);
+  }
+  return { parameters: out };
+}
+
+/* ========== Sheet helpers ========== */
+
+function readSupervisorRows() {
+  const sheet = getOrCreateSupervisorsSheet();
+  const values = sheet.getDataRange().getValues();
+  if (values.length < 2) return [];
+  const headers = values[0];
+  return values.slice(1).filter(row => row[0]).map(row => {
+    const obj = {};
+    headers.forEach((h, i) => { obj[h] = row[i]; });
+    return obj;
+  });
+}
+
+function getOrCreateSupervisorsSheet() {
+  const ss = SpreadsheetApp.getActive();
+  let sheet = ss.getSheetByName(TAB_SUPERVISORS);
+  if (!sheet) {
+    sheet = ss.insertSheet(TAB_SUPERVISORS);
+    sheet.appendRow(SUPERVISOR_COLS);
+    sheet.setFrozenRows(1);
+  } else {
+    // ensure headers exist
+    const firstRow = sheet.getRange(1, 1, 1, SUPERVISOR_COLS.length).getValues()[0];
+    if (!firstRow[0]) sheet.getRange(1, 1, 1, SUPERVISOR_COLS.length).setValues([SUPERVISOR_COLS]);
+  }
+  return sheet;
+}
+
+function getOrCreateParametersSheet() {
+  const ss = SpreadsheetApp.getActive();
+  let sheet = ss.getSheetByName(TAB_PARAMETERS);
+  if (!sheet) {
+    sheet = ss.insertSheet(TAB_PARAMETERS);
+    sheet.appendRow(['field', 'option']);
+    sheet.setFrozenRows(1);
+    seedDefaultParameters(sheet);
+  }
+  return sheet;
+}
+
+function getOrCreateSettingsSheet() {
+  const ss = SpreadsheetApp.getActive();
+  let sheet = ss.getSheetByName(TAB_SETTINGS);
+  if (!sheet) {
+    sheet = ss.insertSheet(TAB_SETTINGS);
+    sheet.appendRow(['key', 'value']);
+    sheet.setFrozenRows(1);
+    sheet.appendRow(['classPin', '2026']);
+    sheet.appendRow(['registrationCode', 'CFGUSH26']);
+    sheet.appendRow(['adminPin', 'cfgush26admin']);
+    sheet.appendRow(['expectedStudents', 25]);
+    sheet.appendRow(['schoolName', 'בית הספר הדיאלוגי']);
+    sheet.appendRow(['season', '2026']);
+    sheet.appendRow(['appBaseUrl', '']);  // fill with deployed app URL
+  }
+  return sheet;
+}
+
+function getSetting(key) {
+  const sheet = getOrCreateSettingsSheet();
+  const values = sheet.getDataRange().getValues();
+  for (let i = 1; i < values.length; i++) {
+    if (values[i][0] === key) return values[i][1];
+  }
+  return null;
+}
+
+function seedDefaultParameters(sheet) {
+  const defaults = [
+    ['orientations', 'דינאמי'],
+    ['orientations', 'CBT'],
+    ['orientations', 'טיפול ממוקד טראומה - SE/EMDR'],
+    ['orientations', 'טיפול זוגי'],
+    ['orientations', 'מיניות'],
+    ['orientations', 'התמכרויות'],
+    ['populations', 'מבוגרים'],
+    ['populations', 'נוער'],
+    ['populations', 'ילדים'],
+    ['populations', 'זוגות'],
+    ['populations', 'משפחות'],
+    ['specialties', 'טראומה'],
+    ['specialties', 'חרדה ודיכאון'],
+    ['specialties', 'אובדן ושכול'],
+    ['specialties', 'הפרעות אכילה'],
+    ['specialties', 'התמכרויות'],
+    ['specialties', 'מיניות'],
+    ['specialties', 'פסיכוזה'],
+    ['specialties', 'ASD'],
+    ['specialties', 'רגישות דתית/חרדית'],
+    ['specialties', 'רב-תרבותי'],
+    ['formats', 'פרונטלי'],
+    ['formats', 'מקוון'],
+    ['formats', 'היברידי'],
+    ['areas', 'ירושלים'],
+    ['areas', 'גוש עציון'],
+    ['areas', 'מרכז'],
+    ['areas', 'שפלה'],
+    ['areas', 'צפון'],
+    ['areas', 'דרום'],
+    ['areas', 'שרון']
+  ];
+  sheet.getRange(2, 1, defaults.length, 2).setValues(defaults);
+}
+
+/* ========== Utils ========== */
+
+function generateToken() {
+  const a = 'abcdefghjkmnpqrstuvwxyz23456789';
+  let t = '';
+  for (let i = 0; i < 14; i++) t += a[Math.floor(Math.random() * a.length)];
+  return t;
+}
+
+function splitList(s) {
+  if (!s) return [];
+  return String(s).split(';').map(x => x.trim()).filter(Boolean);
+}
+
+function joinList(arr) {
+  if (!Array.isArray(arr)) return '';
+  return arr.filter(Boolean).join(';');
+}
+
+function parseAvailability(s) {
+  if (!s) return {};
+  if (typeof s === 'object') return s;
+  try { return JSON.parse(s); } catch (e) { return {}; }
+}
+
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c]));
+}
+
+/* ========== Bulk Import (for older supervisors who can't fill the form themselves) ========== */
+
+const TAB_BULK_IMPORT = 'BulkImport';
+const BULK_COLS = [
+  'imported',          // TRUE after script processed this row
+  'fullName',          // required
+  'email',             // required (used to match in claim flow)
+  'credential',
+  'yearsSupervising',
+  'orientations',      // semicolon-separated, e.g. "דינאמי;CBT"
+  'populations',       // semicolon-separated
+  'specialties',       // semicolon-separated
+  'styleText',
+  'format',            // "פרונטלי" / "מקוון" / "היברידי"
+  'area',
+  'phone',
+  'whatsappEnabled',   // TRUE / FALSE
+  'hasSpot',           // TRUE / FALSE (default TRUE)
+  'autoPublish'        // TRUE = mark as published automatically; FALSE = save as draft
+];
+
+function getOrCreateBulkImportSheet() {
+  const ss = SpreadsheetApp.getActive();
+  let sheet = ss.getSheetByName(TAB_BULK_IMPORT);
+  if (!sheet) {
+    sheet = ss.insertSheet(TAB_BULK_IMPORT);
+    sheet.appendRow(BULK_COLS);
+    sheet.setFrozenRows(1);
+    // Sample row for guidance (commented out fields)
+    sheet.appendRow([
+      false,
+      'שם מלא לדוגמה — מחק שורה זו',
+      'example@example.com',
+      'פסיכולוג קליני, MA',
+      15,
+      'דינאמי;CBT',
+      'מבוגרים;נוער',
+      'טראומה;חרדה ודיכאון',
+      'תיאור קצר של הסגנון. 50 תווים מינימום.',
+      'היברידי',
+      'ירושלים',
+      '0501234567',
+      true,
+      true,
+      false
+    ]);
+    sheet.setColumnWidths(1, BULK_COLS.length, 140);
+    Logger.log('Created BulkImport sheet. Fill rows and run bulkImportFromSheet().');
+  }
+  return sheet;
+}
+
+/**
+ * Read all unimported rows from the BulkImport sheet, create supervisor records,
+ * and mark each row as imported. Sends a "your profile is ready" email to each
+ * supervisor with their personal claim link.
+ *
+ * Run this manually after filling rows in the BulkImport sheet.
+ */
+function bulkImportFromSheet() {
+  return _bulkImportImpl(true);
+}
+
+/**
+ * Same as bulkImportFromSheet but does NOT send the claim email.
+ *
+ * Use when staff wants to fill in profiles on behalf of supervisors before
+ * announcing the directory. Each new supervisor row is created with
+ * mailed=FALSE; later, run sendInvitationsToUnmailed() to send the mails.
+ */
+function bulkImportSilent() {
+  return _bulkImportImpl(false);
+}
+
+function _bulkImportImpl(sendMail) {
+  ensureMailedColumn();
+  const sheet = getOrCreateBulkImportSheet();
+  const values = sheet.getDataRange().getValues();
+  if (values.length < 2) {
+    Logger.log('BulkImport sheet is empty.');
+    return;
+  }
+  const headers = values[0];
+  const supSheet = getOrCreateSupervisorsSheet();
+  const supHeaders = supSheet.getRange(1, 1, 1, supSheet.getLastColumn()).getValues()[0];
+  const baseUrl = getSetting('appBaseUrl') || '';
+
+  let created = 0;
+  let skipped = 0;
+
+  for (let i = 1; i < values.length; i++) {
+    const row = values[i];
+    const obj = {};
+    headers.forEach((h, j) => { obj[h] = row[j]; });
+
+    if (obj.imported === true || obj.imported === 'TRUE' || obj.imported === 'true') {
+      skipped++;
+      continue;
+    }
+    if (!obj.fullName || !obj.email) {
+      skipped++;
+      continue;
+    }
+
+    const token = generateToken();
+    const now = new Date().toISOString();
+
+    const supRow = supHeaders.map(col => {
+      switch (col) {
+        case 'token': return token;
+        case 'created': return now;
+        case 'updated': return now;
+        case 'published': return obj.autoPublish === true || obj.autoPublish === 'TRUE' || obj.autoPublish === 'true';
+        case 'fullName': return String(obj.fullName).trim();
+        case 'credential': return obj.credential || '';
+        case 'yearsSupervising': return Number(obj.yearsSupervising) || 0;
+        case 'orientations': return obj.orientations || '';
+        case 'populations': return obj.populations || '';
+        case 'specialties': return obj.specialties || '';
+        case 'styleText': return obj.styleText || '';
+        case 'format': return obj.format || '';
+        case 'area': return obj.area || '';
+        case 'availability': return '{}';
+        case 'hasSpot': {
+          const v = obj.hasSpot;
+          if (v === '' || v == null) return true;
+          return v === true || v === 'TRUE' || v === 'true';
+        }
+        case 'phone': return String(obj.phone || '').trim();
+        case 'whatsappEnabled': return obj.whatsappEnabled === true || obj.whatsappEnabled === 'TRUE' || obj.whatsappEnabled === 'true';
+        case 'email': return String(obj.email).trim().toLowerCase();
+        case 'studentsAccepted': return 0;
+        case 'mailed': return !!sendMail;
+        default: return '';
+      }
+    });
+    supSheet.appendRow(supRow);
+
+    // Re-set phone column to text format on the just-appended row
+    const newRowIdx = supSheet.getLastRow();
+    const phoneCol = supHeaders.indexOf('phone');
+    if (phoneCol >= 0) {
+      const cell = supSheet.getRange(newRowIdx, phoneCol + 1);
+      cell.setNumberFormat('@');
+      cell.setValue(String(obj.phone || '').trim());
+    }
+
+    // Mark BulkImport row as imported
+    const importedCol = headers.indexOf('imported');
+    if (importedCol >= 0) sheet.getRange(i + 1, importedCol + 1).setValue(true);
+
+    // Send claim email if requested
+    if (sendMail) {
+      sendClaimEmail(String(obj.email).trim(), String(obj.fullName).trim(), baseUrl);
+    }
+    created++;
+  }
+
+  const mailNote = sendMail ? 'mails sent' : 'NO mails sent (silent mode)';
+  Logger.log(`Bulk import done. Created: ${created}, skipped (already imported / missing fields): ${skipped}. ${mailNote}`);
+}
+
+/**
+ * Send the "your profile is ready" mail to every supervisor whose
+ * mailed column is explicitly FALSE. Marks each as mailed=TRUE on success.
+ *
+ * Rows with mailed='' (empty / pre-existing) are NOT mailed — that's the
+ * safety guard so old supervisors aren't accidentally re-mailed.
+ */
+function sendInvitationsToUnmailed() {
+  ensureMailedColumn();
+  const sheet = getOrCreateSupervisorsSheet();
+  const values = sheet.getDataRange().getValues();
+  if (values.length < 2) { Logger.log('No supervisors.'); return; }
+
+  const headers = values[0];
+  const mailedCol = headers.indexOf('mailed');
+  const emailCol = headers.indexOf('email');
+  const nameCol = headers.indexOf('fullName');
+  if (mailedCol < 0 || emailCol < 0 || nameCol < 0) {
+    Logger.log('Missing required column.');
+    return;
+  }
+
+  const baseUrl = getSetting('appBaseUrl') || '';
+  let sent = 0, skipped = 0;
+
+  for (let i = 1; i < values.length; i++) {
+    const row = values[i];
+    const v = row[mailedCol];
+    // Only mail rows where mailed is explicitly FALSE (not empty/blank)
+    const isFalse = v === false || v === 'FALSE' || v === 'false';
+    if (!isFalse) { skipped++; continue; }
+    const email = String(row[emailCol] || '').trim();
+    const name = String(row[nameCol] || '').trim();
+    if (!email || !name) { skipped++; continue; }
+
+    sendClaimEmail(email, name, baseUrl);
+    sheet.getRange(i + 1, mailedCol + 1).setValue(true);
+    sent++;
+  }
+
+  Logger.log(`Invitations sent: ${sent}, skipped: ${skipped}`);
+}
+
+/**
+ * Idempotent migration helper. Adds the 'mailed' column to the Supervisors
+ * sheet if it doesn't exist, defaulting all existing rows to TRUE
+ * (assume previously created supervisors were already mailed).
+ */
+function ensureMailedColumn() {
+  const sheet = getOrCreateSupervisorsSheet();
+  const lastCol = sheet.getLastColumn();
+  const headers = sheet.getRange(1, 1, 1, lastCol).getValues()[0];
+  if (headers.indexOf('mailed') >= 0) return;
+
+  const newCol = lastCol + 1;
+  sheet.getRange(1, newCol).setValue('mailed');
+  const lastRow = sheet.getLastRow();
+  if (lastRow > 1) {
+    const vals = [];
+    for (let i = 0; i < lastRow - 1; i++) vals.push([true]);
+    sheet.getRange(2, newCol, lastRow - 1, 1).setValues(vals);
+  }
+  Logger.log('Added "mailed" column to Supervisors. Existing rows defaulted to TRUE.');
+}
+
+/**
+ * Adds the "maxStudents" column to the Supervisors tab if missing.
+ * Admin-only capacity field (how many supervisees the supervisor can take).
+ * Existing rows default to '' (unknown). Safe to run repeatedly.
+ */
+function ensureMaxStudentsColumn() {
+  const sheet = getOrCreateSupervisorsSheet();
+  const lastCol = sheet.getLastColumn();
+  const headers = sheet.getRange(1, 1, 1, lastCol).getValues()[0];
+  if (headers.indexOf('maxStudents') >= 0) return;
+
+  const newCol = lastCol + 1;
+  sheet.getRange(1, newCol).setValue('maxStudents');
+  Logger.log('Added "maxStudents" column to Supervisors (admin-only). Existing rows left blank.');
+}
+
+/**
+ * Adds the "cardType" column to the Supervisors tab if missing.
+ * '' = supervision (default); 'consultation' = focused psychiatric consultation (not הדרכה).
+ * Admin-set. Existing rows default to '' (supervision). Safe to run repeatedly.
+ */
+function ensureCardTypeColumn() {
+  const sheet = getOrCreateSupervisorsSheet();
+  const lastCol = sheet.getLastColumn();
+  const headers = sheet.getRange(1, 1, 1, lastCol).getValues()[0];
+  if (headers.indexOf('cardType') >= 0) return;
+
+  const newCol = lastCol + 1;
+  sheet.getRange(1, newCol).setValue('cardType');
+  Logger.log('Added "cardType" column to Supervisors. Existing rows default to supervision (blank).');
+}
+
+function ensureArchivedColumn() {
+  const sheet = getOrCreateSupervisorsSheet();
+  const lastCol = sheet.getLastColumn();
+  const headers = sheet.getRange(1, 1, 1, lastCol).getValues()[0];
+  if (headers.indexOf('archived') >= 0) return;
+
+  const newCol = lastCol + 1;
+  sheet.getRange(1, newCol).setValue('archived');
+  Logger.log('Added "archived" column to Supervisors. Existing rows default to active (blank).');
+}
+
+function sendClaimEmail(toEmail, name, baseUrl) {
+  try {
+    const schoolName = getSetting('schoolName') || 'בית הספר הדיאלוגי';
+    const claimUrl = (baseUrl || '') + 'claim.html';
+    MailApp.sendEmail({
+      to: toEmail,
+      subject: 'הפרופיל שלך מוכן — ' + schoolName,
+      htmlBody:
+        '<div dir="rtl" style="font-family:Arial,sans-serif;font-size:15px;line-height:1.7">' +
+        '<p>שלום ' + escapeHtml(name) + ',</p>' +
+        '<p>צוות ' + escapeHtml(schoolName) + ' הכין עבורך פרופיל מוכן במאגר המדריכים.</p>' +
+        '<p><b>איך נכנסים לערוך:</b></p>' +
+        '<ol>' +
+        '<li>פתח/י את הקישור: <a href="' + claimUrl + '">' + claimUrl + '</a></li>' +
+        '<li>הזן/י את השם המלא והמייל שלך — זה המייל הזה</li>' +
+        '<li>תיכנס/י לפרופיל ותוכל/י לעבור עליו, לתקן ולפרסם</li>' +
+        '</ol>' +
+        '<p>אין צורך בקוד או בסיסמה — השם והמייל שלך הם המפתח.</p>' +
+        '<p>בהצלחה,<br>צוות בית הספר</p>' +
+        '</div>'
+    });
+  } catch (e) {
+    // best-effort
+  }
+}
+
+/* ========== Seed: Hadialogy directory (run once) ========== */
+
+/**
+ * Pre-fill the BulkImport sheet with the 16 supervisors from the Hadialogy
+ * directory (data scraped from jewishpsychology.org/hadialogy + bogrim_h.php).
+ *
+ * Skips any email that already exists in Supervisors or BulkImport so it's
+ * safe to re-run. After running, review the BulkImport rows in the Sheet,
+ * fix anything wrong, then run bulkImportFromSheet() to send claim emails.
+ *
+ * imported is left FALSE; autoPublish is FALSE — supervisor reviews and
+ * publishes from claim.html.
+ */
+// ⚠ פרטי הקשר הוסרו מהריפו (19.8.26) — הריפו ציבורי. הפונקציה הזאת רצה
+// פעם אחת במאי 2026 והנתונים שלה ממילא כבר לא סמכותיים (למשל היא מחזיקה
+// לנריה קרין מספר שונה מזה שבמסמך של טל). מקור האמת הוא לשונית Supervisors
+// בגיליון. אם צריך לזרוע מחדש — למלא מהגיליון, לא מכאן.
+function seedHadialogyDirectory() {
+  const seedRows = [
+    // From hadialogy/#9 (צוות מקצועי + צוות עמיתי הוראה)
+    { fullName: 'ד"ר ברוך כהנא',          email: 'REDACTED@example.com',           credential: 'פסיכולוג קליני מומחה' },
+    { fullName: 'ד"ר יפעה מליק-גרינברג',  email: 'REDACTED@example.com',             credential: 'פסיכיאטרית מתמחה' },
+    { fullName: 'ד"ר קארן לרנר',          email: 'REDACTED@example.com',          credential: 'פסיכולוגית קלינית' },
+    { fullName: 'איתן כלפה',              email: 'REDACTED@example.com',  credential: 'פסיכולוג קליני מומחה - מדריך' },
+    { fullName: 'גבריאל פרץ',             email: 'REDACTED@example.com',      credential: 'פסיכולוג קליני מדריך' },
+    { fullName: 'נעמי אשואל',             email: 'REDACTED@example.com',       credential: 'פסיכולוגית קלינית, חינוכית ומדריכה' },
+    { fullName: 'ד"ר חגי סרי',            email: 'REDACTED@example.com',       credential: 'פסיכולוג קליני מומחה' },
+    { fullName: 'ד"ר נילי פויירשטיין',    email: 'REDACTED@example.com',           credential: 'פסיכולוגית ועו"ס קלינית' },
+    { fullName: 'חנה יאיר בוריה',         email: 'REDACTED@example.com',             credential: 'עו"ס פסיכותרפיסטית, מדריכה בטיפול זוגי' },
+    { fullName: 'נועם לב',                email: 'REDACTED@example.com',            credential: 'פסיכולוג קליני מומחה' },
+    { fullName: 'אבי יעקובסון',           email: 'REDACTED@example.com',        credential: 'פסיכולוג קליני מומחה' },
+    { fullName: 'בנימין גולדנהירש',       email: 'REDACTED@example.com',  credential: 'פסיכולוג קליני וחינוכי – מדריך' },
+    // From bogrim_h.php (no photo, but we have phone + area + role)
+    { fullName: 'נריה קרין',              email: 'REDACTED@example.com',         credential: 'עו"ס קלינית, פסיכואנליטיקאית', orientations: 'דינאמי', phone: '05XXXXXXXX', area: 'שרון' },
+    { fullName: 'אפרת ברום',              email: 'REDACTED@example.com',          credential: '',                            phone: '05XXXXXXXX', area: 'שילה' },
+    // Not found on either site — name+email only, supervisor fills the rest in claim
+    { fullName: 'טליק לרנר',              email: 'REDACTED@example.com' },
+    { fullName: 'דני קורנבליט',           email: 'REDACTED@example.com' }
+  ];
+
+  const bulkSheet = getOrCreateBulkImportSheet();
+  const supSheet = getOrCreateSupervisorsSheet();
+
+  // Collect existing emails (lowercased) from both sheets to skip dupes
+  const existingEmails = new Set();
+  const supValues = supSheet.getDataRange().getValues();
+  if (supValues.length > 1) {
+    const supHeaders = supValues[0];
+    const emailCol = supHeaders.indexOf('email');
+    if (emailCol >= 0) {
+      for (let i = 1; i < supValues.length; i++) {
+        const v = String(supValues[i][emailCol] || '').trim().toLowerCase();
+        if (v) existingEmails.add(v);
+      }
+    }
+  }
+  const bulkValues = bulkSheet.getDataRange().getValues();
+  if (bulkValues.length > 1) {
+    const bulkHeaders = bulkValues[0];
+    const emailCol = bulkHeaders.indexOf('email');
+    if (emailCol >= 0) {
+      for (let i = 1; i < bulkValues.length; i++) {
+        const v = String(bulkValues[i][emailCol] || '').trim().toLowerCase();
+        if (v) existingEmails.add(v);
+      }
+    }
+  }
+
+  let added = 0;
+  let skipped = 0;
+  const newRows = [];
+  for (const r of seedRows) {
+    const e = String(r.email || '').trim().toLowerCase();
+    if (!e || existingEmails.has(e)) { skipped++; continue; }
+    existingEmails.add(e);
+    newRows.push(BULK_COLS.map(col => {
+      switch (col) {
+        case 'imported':        return false;
+        case 'fullName':        return r.fullName || '';
+        case 'email':           return r.email || '';
+        case 'credential':      return r.credential || '';
+        case 'yearsSupervising':return '';
+        case 'orientations':    return r.orientations || '';
+        case 'populations':     return r.populations || '';
+        case 'specialties':     return r.specialties || '';
+        case 'styleText':       return r.styleText || '';
+        case 'format':          return r.format || '';
+        case 'area':            return r.area || '';
+        case 'phone':           return r.phone || '';
+        case 'whatsappEnabled': return false;
+        case 'hasSpot':         return true;
+        case 'autoPublish':     return false;
+        default:                return '';
+      }
+    }));
+    added++;
+  }
+
+  if (newRows.length) {
+    const startRow = bulkSheet.getLastRow() + 1;
+    bulkSheet.getRange(startRow, 1, newRows.length, BULK_COLS.length).setValues(newRows);
+    // Force phone column to text so leading zeros survive
+    const phoneCol = BULK_COLS.indexOf('phone');
+    if (phoneCol >= 0) {
+      bulkSheet.getRange(startRow, phoneCol + 1, newRows.length, 1).setNumberFormat('@');
+    }
+  }
+
+  Logger.log('seedHadialogyDirectory: added ' + added + ', skipped (dupe/empty): ' + skipped);
+}
+
+/* ========== Setup (run manually once) ========== */
+
+function setupSheets() {
+  getOrCreateSupervisorsSheet();
+  getOrCreateParametersSheet();
+  getOrCreateSettingsSheet();
+  getOrCreateBulkImportSheet();
+  getOrCreateStudentsSheet();
+  Logger.log('Setup complete. Sheets: Supervisors, Parameters, Settings, BulkImport, Students');
+}
+
+/**
+ * Run manually after upgrading to v2 (admin view + new orientations).
+ * - Replaces all orientations rows in Parameters with the new 6-item list
+ * - Maps existing supervisor orientations to the new list
+ * - Adds adminPin & expectedStudents to Settings if missing
+ * - Adds studentsAccepted column if missing
+ */
+function migrateToV2() {
+  // 1) Update Parameters sheet — replace orientations rows
+  const params = getOrCreateParametersSheet();
+  const values = params.getDataRange().getValues();
+  const keep = values.filter((row, i) => i === 0 || row[0] !== 'orientations');
+  params.clearContents();
+  params.getRange(1, 1, keep.length, 2).setValues(keep);
+  const newOri = [
+    ['orientations', 'דינאמי'],
+    ['orientations', 'CBT'],
+    ['orientations', 'טיפול ממוקד טראומה - SE/EMDR'],
+    ['orientations', 'טיפול זוגי'],
+    ['orientations', 'מיניות'],
+    ['orientations', 'התמכרויות']
+  ];
+  params.getRange(params.getLastRow() + 1, 1, newOri.length, 2).setValues(newOri);
+
+  // 2) Map existing supervisor data
+  const map = {
+    'פסיכודינמי': 'דינאמי',
+    'יחסי-אובייקט': 'דינאמי',
+    'JPT': 'דינאמי',
+    'גשטאלט': 'דינאמי',
+    'נרטיבי': 'דינאמי',
+    'אינטגרטיבי': 'דינאמי',
+    'מערכתי-משפחתי': 'טיפול זוגי',
+    'EFT': 'טיפול זוגי',
+    'CBT': 'CBT'
+  };
+  const sup = getOrCreateSupervisorsSheet();
+  const sv = sup.getDataRange().getValues();
+  const headers = sv[0];
+  const oCol = headers.indexOf('orientations');
+  if (oCol >= 0) {
+    for (let i = 1; i < sv.length; i++) {
+      const old = sv[i][oCol];
+      if (!old) continue;
+      const items = String(old).split(';').map(x => x.trim()).filter(Boolean);
+      const mapped = Array.from(new Set(items.map(x => map[x] || x).filter(x => map[x] || ['דינאמי','CBT','טיפול ממוקד טראומה - SE/EMDR','טיפול זוגי','מיניות','התמכרויות'].includes(x))));
+      sup.getRange(i + 1, oCol + 1).setValue(mapped.join(';'));
+    }
+  }
+
+  // 3) Settings — add adminPin & expectedStudents if missing
+  const settings = getOrCreateSettingsSheet();
+  const sv2 = settings.getDataRange().getValues();
+  const existingKeys = sv2.slice(1).map(r => r[0]);
+  if (!existingKeys.includes('adminPin')) settings.appendRow(['adminPin', 'cfgush26admin']);
+  if (!existingKeys.includes('expectedStudents')) settings.appendRow(['expectedStudents', 25]);
+
+  // 4) Supervisors — add studentsAccepted column if missing
+  if (!headers.includes('studentsAccepted')) {
+    sup.getRange(1, headers.length + 1).setValue('studentsAccepted');
+    if (sv.length > 1) {
+      const zeros = Array(sv.length - 1).fill([0]);
+      sup.getRange(2, headers.length + 1, sv.length - 1, 1).setValues(zeros);
+    }
+  }
+
+  // 5) BulkImport tab
+  getOrCreateBulkImportSheet();
+
+  Logger.log('Migration v2 complete. Settings: adminPin=cfgush26admin, expectedStudents=25 (change as needed). BulkImport tab created.');
+}

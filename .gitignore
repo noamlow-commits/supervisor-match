@@ -1,0 +1,40 @@
+# ---- secrets: never commit, in any repo, public or private ----
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+credentials*.json
+client_secret*.json
+*service-account*.json
+token*.json
+.clasprc.json
+
+# ---- personal data: this repo is PUBLIC and serves GitHub Pages ----
+# Recordings, transcripts and rosters of real people must never enter it.
+הקלטות_דרישות/
+*.opus
+*.mp3
+*.m4a
+*.wav
+*roster*
+*cohort*
+*students-*
+*תלמידים*
+*מדריכים*
+
+# known-clean application scripts that the roster patterns above would otherwise swallow
+!import-student-cohorts-2026.gs
+!import-supervisor-phones-2026.gs
+
+# ---- local tooling / OS junk ----
+node_modules/
+.DS_Store
+Thumbs.db
+desktop.ini
+*.log
+
+# ---- local scratch ----
+scratch/
+tmp/
+*.local.*
