@@ -287,6 +287,11 @@
   .roster-msg.show{display:block}
   .roster-msg.ok{background:var(--success-soft);color:var(--success)}
   .roster-msg.err{background:var(--error-soft);color:var(--error)}
+  /* Shown instead of the form when the profile could not be loaded from the server */
+  .load-state{background:var(--surface);border-radius:16px;padding:28px 24px;margin-bottom:16px;text-align:center;line-height:1.7}
+  .load-state.err{border:1.5px solid var(--error)}
+  .load-state h2{font-size:18px;margin:0 0 8px}
+  .load-state p{margin:0 0 16px;color:var(--ink-soft)}
 </style>
 </head>
 <body>
@@ -304,6 +309,17 @@
 
   <button class="settings-cog" id="settingsCog" title="הגדרות backend">⚙</button>
 
+  <!-- Loading / load-failure state. While a token is present the editor stays hidden
+       until the server returns this supervisor's profile: an editor shown empty looks
+       like "my details are gone", and the auto-save would then write that emptiness
+       over the real row. -->
+  <div class="load-state" id="loadState" style="display:none">
+    <h2 id="loadTitle">טוען את הפרופיל…</h2>
+    <p id="loadMsg">זה יכול לקחת עד חצי דקה.</p>
+    <button class="btn btn-primary" id="btnRetryLoad" style="display:none">נסה/י שוב</button>
+  </div>
+
+  <div id="editor">
   <!-- Publication status -->
   <div class="pub-status draft" id="pubStatus">
     <span>○</span> <span>פרופיל לא מפורסם — מלא את כל השדות הנדרשים ולחץ "פרסם פרופיל"</span>
@@ -480,6 +496,7 @@
     ✓ הנתונים נשמרים אוטומטית עם כל שינוי. ניתן לסגור ולחזור — לא יאבד דבר.<br>
     "פרסם פרופיל" הוא הצעד שהופך את הפרופיל לגלוי לתלמידים — ניתן גם לפרסם פרופיל חלקי ולהשלים מאוחר יותר.
   </p>
+  </div><!-- /editor -->
 
   <footer class="page-footer">
     <span>מבית</span>
@@ -727,7 +744,14 @@ function markSaved(){
   setSaveStatus('saved', '✓ נשמר אוטומטית');
 }
 
+/* With a token, the server row is the only copy that matters. Nothing may be written
+   to it until that row has been loaded into the form — otherwise a save sends an empty
+   (or another supervisor's cached) profile, and saveSupervisor overwrites every field. */
+let serverLoaded = false;
+function canSaveToServer(){ return LIVE && TOKEN && serverLoaded; }
+
 function scheduleAutoSave(){
+  if(LIVE && TOKEN && !serverLoaded) return;
   // Skip auto-save in demo mode (no token / no backend) — localStorage already covers it
   if(!LIVE || !TOKEN) {
     // Still cache to localStorage so it survives a refresh
@@ -819,39 +843,68 @@ async function init(){
   // init spot toggle to default true
   document.getElementById('spotToggle').classList.add('active');
 
-  // Load profile: from server (if token + LIVE) or localStorage (demo)
-  let loaded = false;
-  if(LIVE && TOKEN){
-    const r = await apiCall('getSupervisor', {token: TOKEN});
-    if(r && r.profile){
-      Object.assign(profile, r.profile);
-      restoreUI();
-      loaded = true;
-    } else if(r && r.error === 'not_found'){
-      alert('הקישור שלך לא נמצא. ייתכן שהוא לא תקין. פנה/י לרכז/ת.');
-    }
-  }
-  if(!loaded){
-    const saved = localStorage.getItem('supervisor-draft');
-    if(saved){
-      try{ Object.assign(profile, JSON.parse(saved)); restoreUI(); }catch(e){}
-    }
-  }
-
   document.getElementById('btnSave').addEventListener('click', saveDraft);
   document.getElementById('btnPublish').addEventListener('click', publish);
   document.getElementById('settingsCog').addEventListener('click', openSettings);
   if(!LIVE) document.getElementById('demoBadge').style.display='inline-block';
 
-  // Show "what's missing" panel from the start so the user sees the path forward
-  updateMissingPanel();
-  // If we loaded an existing profile from server, that data is already saved — show "saved"
-  if(LIVE && TOKEN && loaded) markSaved();
+  document.getElementById('btnRetryLoad').addEventListener('click', loadFromServer);
 
-  // Roster (only meaningful with a token + live backend)
   if(LIVE && TOKEN){
-    initRoster();
+    await loadFromServer();
+    return;
   }
+
+  // Demo mode (no backend or no token): the browser draft is the only store there is.
+  const saved = localStorage.getItem('supervisor-draft');
+  if(saved){
+    try{ Object.assign(profile, JSON.parse(saved)); restoreUI(); }catch(e){}
+  }
+  updateMissingPanel();
+}
+
+function showLoadState(kind, title, msg){
+  const box = document.getElementById('loadState');
+  document.getElementById('editor').style.display = kind ? 'none' : '';
+  box.style.display = kind ? '' : 'none';
+  if(!kind) return;
+  box.classList.toggle('err', kind === 'error' || kind === 'notfound');
+  document.getElementById('loadTitle').textContent = title;
+  document.getElementById('loadMsg').textContent = msg;
+  // Retry helps a slow/failed server, not a link that doesn't exist.
+  document.getElementById('btnRetryLoad').style.display = kind === 'error' ? '' : 'none';
+}
+
+// Shown between retries by apiCall, so a slow load doesn't look frozen.
+function onApiRetry(n, total){
+  if(serverLoaded) return;
+  document.getElementById('loadMsg').textContent = `השרת איטי כרגע — מנסה שוב (${n}/${total})…`;
+}
+
+async function loadFromServer(){
+  showLoadState('loading', 'טוען את הפרופיל…', 'זה יכול לקחת עד חצי דקה.');
+  setSaveStatus(null, 'טוען…');
+  const r = await apiCall('getSupervisor', {token: TOKEN});
+
+  if(r && r.profile){
+    Object.assign(profile, r.profile);
+    restoreUI();
+    serverLoaded = true;
+    showLoadState(null);
+    updateMissingPanel();
+    markSaved();   // what's on screen is exactly what's on the server
+    initRoster();
+    return;
+  }
+
+  setSaveStatus('failed', 'לא נטען');
+  if(r && r.error === 'not_found'){
+    showLoadState('notfound', 'הקישור לא נמצא',
+      'ייתכן שהקישור לא הועתק במלואו. פנה/י לרכז/ת לקבלת קישור חדש.');
+    return;
+  }
+  showLoadState('error', 'לא הצלחנו לטעון את הפרופיל שלך',
+    apiFailureMessage() + ' הפרטים שלך שמורים במערכת ולא נמחקו.');
 }
 
 /* ===== My students roster ===== */
@@ -1039,7 +1092,8 @@ function validate(){
 }
 
 async function saveDraft(){
-  if(LIVE && TOKEN){
+  if(LIVE && TOKEN && !serverLoaded) return;
+  if(canSaveToServer()){
     const r = await apiCall('saveSupervisor', {token: TOKEN, data: JSON.stringify(profile)});
     if(r && r.ok){ markSaved(); return; }
     alert('השמירה לשרת נכשלה. נשמר זמנית בדפדפן.');
@@ -1049,6 +1103,7 @@ async function saveDraft(){
 }
 
 async function publish(){
+  if(LIVE && TOKEN && !serverLoaded) return;
   const errors = validate();
   if(errors.length){
     const proceed = confirm(
