@@ -291,6 +291,14 @@
 </head>
 <body>
 
+<!-- Covers the form until the server profile is in hand (see loadServerProfile). -->
+<div id="loadGate" style="display:none;position:fixed;inset:0;z-index:50;background:rgba(250,248,244,.94);align-items:center;justify-content:center;padding:16px">
+  <div style="background:#fff;border-radius:14px;box-shadow:0 2px 14px rgba(0,0,0,.08);padding:26px 24px;max-width:420px;text-align:center;line-height:1.7">
+    <div id="loadGateText" style="font-size:15px"></div>
+    <button class="btn btn-primary" id="loadGateRetry" style="display:none;margin-top:14px">נסה/י שוב</button>
+  </div>
+</div>
+
 <div class="container">
   <!-- Page header -->
   <div class="page-head">
@@ -711,6 +719,42 @@ function onFormatChange(val){
 let _autoSaveTimer = null;
 let _autoSavingNow = false;
 
+/* saveSupervisor writes EVERY field, published included. So a save sent before
+   the server profile arrived — or after it failed to arrive, leaving an empty
+   form on screen — overwrites the card with blanks and unpublishes it. Nothing
+   may be saved until the real profile is loaded. */
+let profileReady = !(LIVE && TOKEN);
+
+function showLoadGate(html, canRetry){
+  document.getElementById('loadGateText').innerHTML = html;
+  document.getElementById('loadGateRetry').style.display = canRetry ? '' : 'none';
+  document.getElementById('loadGate').style.display = 'flex';
+}
+function hideLoadGate(){
+  document.getElementById('loadGate').style.display = 'none';
+}
+
+async function loadServerProfile(){
+  showLoadGate('טוען את הפרופיל שלך…', false);
+  const r = await apiCall('getSupervisor', {token: TOKEN});
+  if(r && r.profile){
+    Object.assign(profile, r.profile);
+    restoreUI();
+    profileReady = true;
+    hideLoadGate();
+    updateMissingPanel();
+    markSaved();
+    return true;
+  }
+  if(r && (r.error === 'not_found' || r.error === 'missing_token')){
+    showLoadGate('הקישור האישי שלך לא נמצא במאגר.<br>אפשר להיכנס עם המייל שמסרת לצוות: ' +
+      '<a href="claim.html">כניסה לפרופיל</a>, או לפנות לרכז/ת.', false);
+    return false;
+  }
+  showLoadGate(esc(apiFailureMessage()) + '<br>הפרופיל שלך שמור בשרת ולא נפגע.', true);
+  return false;
+}
+
 function setSaveStatus(state, text){
   const el = document.getElementById('saveStatus');
   el.classList.remove('saved','saving','failed');
@@ -728,6 +772,7 @@ function markSaved(){
 }
 
 function scheduleAutoSave(){
+  if(!profileReady) return;
   // Skip auto-save in demo mode (no token / no backend) — localStorage already covers it
   if(!LIVE || !TOKEN) {
     // Still cache to localStorage so it survives a refresh
@@ -800,6 +845,7 @@ function updateMissingPanel(){
 
 /* ===== Init ===== */
 async function init(){
+  if(LIVE && TOKEN) showLoadGate('טוען את הפרופיל שלך…', false);
   // Try loading parameters from server
   if(LIVE){
     const par = await apiCall('getParameters', {pin: localStorage.getItem('supervisor-match-pin') || ''});
@@ -819,25 +865,6 @@ async function init(){
   // init spot toggle to default true
   document.getElementById('spotToggle').classList.add('active');
 
-  // Load profile: from server (if token + LIVE) or localStorage (demo)
-  let loaded = false;
-  if(LIVE && TOKEN){
-    const r = await apiCall('getSupervisor', {token: TOKEN});
-    if(r && r.profile){
-      Object.assign(profile, r.profile);
-      restoreUI();
-      loaded = true;
-    } else if(r && r.error === 'not_found'){
-      alert('הקישור שלך לא נמצא. ייתכן שהוא לא תקין. פנה/י לרכז/ת.');
-    }
-  }
-  if(!loaded){
-    const saved = localStorage.getItem('supervisor-draft');
-    if(saved){
-      try{ Object.assign(profile, JSON.parse(saved)); restoreUI(); }catch(e){}
-    }
-  }
-
   document.getElementById('btnSave').addEventListener('click', saveDraft);
   document.getElementById('btnPublish').addEventListener('click', publish);
   document.getElementById('settingsCog').addEventListener('click', openSettings);
@@ -845,12 +872,19 @@ async function init(){
 
   // Show "what's missing" panel from the start so the user sees the path forward
   updateMissingPanel();
-  // If we loaded an existing profile from server, that data is already saved — show "saved"
-  if(LIVE && TOKEN && loaded) markSaved();
 
-  // Roster (only meaningful with a token + live backend)
+  // Load profile: from server (token + LIVE) or the local draft (demo only —
+  // a draft must never stand in for a server profile that failed to load)
   if(LIVE && TOKEN){
-    initRoster();
+    document.getElementById('loadGateRetry').addEventListener('click', async ()=>{
+      if(await loadServerProfile()) initRoster();
+    });
+    if(await loadServerProfile()) initRoster();
+  } else {
+    const saved = localStorage.getItem('supervisor-draft');
+    if(saved){
+      try{ Object.assign(profile, JSON.parse(saved)); restoreUI(); updateMissingPanel(); }catch(e){}
+    }
   }
 }
 
@@ -1039,6 +1073,7 @@ function validate(){
 }
 
 async function saveDraft(){
+  if(!profileReady) return;
   if(LIVE && TOKEN){
     const r = await apiCall('saveSupervisor', {token: TOKEN, data: JSON.stringify(profile)});
     if(r && r.ok){ markSaved(); return; }
@@ -1049,6 +1084,7 @@ async function saveDraft(){
 }
 
 async function publish(){
+  if(!profileReady) return;
   const errors = validate();
   if(errors.length){
     const proceed = confirm(

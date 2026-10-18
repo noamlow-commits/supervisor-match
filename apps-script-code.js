@@ -347,6 +347,10 @@ function saveSupervisor(p) {
   } catch (e) {
     return { error: 'bad_json' };
   }
+  // Every profile has a name from registration on, so a save without one is an
+  // editor that never loaded the profile — writing it would blank and unpublish
+  // the card (the קארן לרנר orphan). Refuse rather than overwrite.
+  if (!String(data.fullName || '').trim()) return { error: 'empty_profile' };
 
   ensureMaxStudentsColumn();
   ensureCardTypeColumn();
