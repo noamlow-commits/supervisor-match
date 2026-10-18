@@ -95,10 +95,10 @@
   <div id="formView">
     <img src="logo-school.webp" alt="הדיאלוגי" class="brand-logo">
     <h1>כניסה לפרופיל מוכן <span class="demo-badge" id="demoBadge">דמו</span></h1>
-    <p class="lead">קיבלת מהצוות הודעה שהפרופיל שלך מוכן לעריכה? הזן/י את השם והמייל שלך כפי שמסרת, ותועבר/י ישר לפרופיל.</p>
+    <p class="lead">הזן/י את השם והמייל שלך כפי שמסרת לצוות, ונשלח למייל הזה את הקישור האישי לעריכת הפרופיל.</p>
 
     <div class="info">
-      <b>למה אין סיסמה?</b> הפרופיל שלך כבר מוכן במערכת. השם והמייל שלך הם המפתח לכניסה.
+      <b>למה אין סיסמה?</b> הקישור האישי שנשלח למייל שלך הוא המפתח לכניסה. כדאי לשמור אותו.
     </div>
 
     <div class="field">
@@ -112,7 +112,7 @@
     </div>
 
     <div class="err" id="err"></div>
-    <button class="btn" id="submitBtn">היכנס/י לפרופיל שלי</button>
+    <button class="btn" id="submitBtn">שלחו לי את הקישור</button>
 
     <div class="alt">
       אין לי פרופיל מוכן —<br>
@@ -124,7 +124,7 @@
   <div id="successView" class="success">
     <div class="check">✓</div>
     <h2 id="welcomeName">ברוך/ה הבא/ה</h2>
-    <p>מעביר/ה אותך לפרופיל שלך... <span class="spinner"></span></p>
+    <p id="successText">מעביר/ה אותך לפרופיל שלך... <span class="spinner"></span></p>
   </div>
 </div>
 
@@ -222,7 +222,7 @@ async function submitClaim(){
   }
 
   const r = await apiCall('claimSupervisor', {email, name});
-  btn.disabled = false; btn.textContent = 'היכנס/י לפרופיל שלי';
+  btn.disabled = false; btn.textContent = 'שלחו לי את הקישור';
 
   if(!r){ err.textContent = 'שגיאת תקשורת. נסה/י שוב'; return; }
   if(r.error === 'not_found'){
@@ -233,11 +233,24 @@ async function submitClaim(){
     err.textContent = 'המייל קיים, אבל השם לא תואם. ודא/י שאת/ה הבעלים של המייל הזה ושכתבת/ת את השם כפי שמסרת.';
     return;
   }
+  if(r.error === 'mail_failed'){
+    err.textContent = 'לא הצלחנו לשלוח את המייל. נסה/י שוב בעוד כמה דקות, או פנה/י לרכז/ת.';
+    return;
+  }
   if(r.error){
     err.textContent = 'שגיאה: ' + (r.message || r.error);
     return;
   }
-  if(r.token){
+  if(r.sent){
+    // The link goes to the address on file only — it is never shown here.
+    document.getElementById('formView').style.display = 'none';
+    document.getElementById('successView').classList.add('show');
+    document.getElementById('welcomeName').textContent = 'הקישור נשלח למייל שלך';
+    document.getElementById('successText').textContent =
+      'שלחנו את הקישור האישי לכתובת ' + email + '. אם הוא לא מגיע תוך כמה דקות, כדאי לבדוק גם בתיקיית הספאם או לפנות לרכז/ת.';
+    return;
+  }
+  if(r.token){  // backend not yet redeployed — the old flow
     showSuccess(r.fullName || name, r.token);
   }
 }

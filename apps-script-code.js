@@ -202,7 +202,39 @@ function claimSupervisor(p) {
     return { error: 'name_mismatch' };
   }
 
-  return { token: match.token, fullName: match.fullName };
+  // The token is the edit credential, and email + name are no secret (both sit on the
+  // public cards; the name match accepts a single letter). So the token goes only to the
+  // address on file — it is never returned to the caller. One mail per address per 10 min,
+  // so the form cannot be used to flood a supervisor's inbox.
+  const cache = CacheService.getScriptCache();
+  const throttleKey = 'claim_' + Utilities.base64EncodeWebSafe(email).slice(0, 200);
+  if (cache.get(throttleKey)) return { sent: true };
+  const baseUrl = getSetting('appBaseUrl') || 'https://noamlow-commits.github.io/supervisor-match/';
+  const personalUrl = baseUrl + 'supervisor.html?token=' + match.token;
+  if (!sendClaimLinkEmail(String(match.email).trim(), match.fullName, personalUrl)) return { error: 'mail_failed' };
+  cache.put(throttleKey, '1', 600);
+  return { sent: true };
+}
+
+function sendClaimLinkEmail(toEmail, name, personalUrl) {
+  try {
+    const schoolName = getSetting('schoolName') || 'בית הספר לפסיכותרפיה';
+    MailApp.sendEmail({
+      to: toEmail,
+      subject: 'הקישור האישי שלך לפרופיל — ' + schoolName,
+      htmlBody:
+        '<div dir="rtl" style="font-family:Arial,sans-serif;font-size:15px;line-height:1.6">' +
+        '<p>שלום ' + escapeHtml(name) + ',</p>' +
+        '<p>ביקשת להיכנס לפרופיל שלך במאגר המדריכים של ' + escapeHtml(schoolName) + '.</p>' +
+        '<p><a href="' + personalUrl + '">לחצ/י כאן לעריכת הפרופיל</a></p>' +
+        '<p><b>חשוב:</b> הקישור משמש כסיסמה — אין להעביר אותו לאחרים. אם לא ביקשת אותו, אפשר להתעלם מהמייל.</p>' +
+        '<p>בברכה,<br>צוות בית הספר</p>' +
+        '</div>'
+    });
+    return true;
+  } catch (e) {
+    return false;
+  }
 }
 
 function sendRegistrationEmail(toEmail, name, personalUrl) {
