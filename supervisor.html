@@ -519,8 +519,14 @@ const TOKEN = new URLSearchParams(location.search).get('token') || localStorage.
 const RETRYABLE_ACTIONS = new Set([
   'verifyClassPin','verifyRegistrationCode','verifyAdminPin',
   'getSupervisors','getSupervisor','getParameters','getAdminStats',
-  'getStudents','getUnplacedStudents','getMyPlacedStudents'
+  'getStudents','getUnplacedStudents','getMyPlacedStudents',
+  'saveSupervisor'   // sets every field to the given value, so running it twice = running it once
 ]);
+
+// Tell the person why a save is taking long, instead of a frozen "שומר…".
+function onApiRetry(attempt, total){
+  if(typeof setSaveStatus === 'function') setSaveStatus('saving', 'השרת איטי — מנסה שוב (' + attempt + '/' + total + ')…');
+}
 
 let lastApiFailure = '';
 
@@ -531,8 +537,9 @@ async function apiCall(action, params){
   for(const [k,v] of Object.entries(params||{})){
     url.searchParams.set(k, v == null ? '' : (typeof v === 'object' ? JSON.stringify(v) : v));
   }
-  // Reads only. saveSupervisor/claimStudent and friends are not idempotent: a
-  // retry after a timeout on a request that actually landed would run it twice.
+  // Only calls that are safe to run twice are retried (see RETRYABLE_ACTIONS).
+  // claimStudent and friends are not: a retry after a timeout on a request that
+  // actually landed would run it twice. saveSupervisor is: it overwrites with the same profile.
   const attempts = RETRYABLE_ACTIONS.has(action) ? 3 : 1;
   lastApiFailure = '';
 
@@ -783,8 +790,11 @@ function scheduleAutoSave(){
   _autoSaveTimer = setTimeout(autoSaveNow, 800);
 }
 
+let _resaveAfter = false;
 async function autoSaveNow(){
-  if(_autoSavingNow) return;
+  // An edit made while a save (or its retries) is in flight must not be dropped:
+  // remember it and save again once this one finishes.
+  if(_autoSavingNow){ _resaveAfter = true; return; }
   _autoSavingNow = true;
   setSaveStatus('saving', 'שומר…');
   try{
@@ -795,6 +805,7 @@ async function autoSaveNow(){
     setSaveStatus('failed', '✗ שמירה נכשלה');
   }finally{
     _autoSavingNow = false;
+    if(_resaveAfter){ _resaveAfter = false; scheduleAutoSave(); }
   }
 }
 
