@@ -461,6 +461,7 @@ const RETRYABLE_ACTIONS = new Set([
 ]);
 
 let lastApiFailure = '';
+let loadFailed = false;
 
 async function apiCall(action, params){
   if(!LIVE) return null;
@@ -563,7 +564,14 @@ async function init(){
       apiCall('getSupervisors', {pin}),
       apiCall('getParameters', {pin})
     ]);
-    if(sup && sup.supervisors) SUPERVISORS = sup.supervisors;
+    if(sup && sup.supervisors){
+      SUPERVISORS = sup.supervisors;
+    } else {
+      // Live mode must never fall back to the built-in demo cards: they look real
+      // and hide every update the secretary made (a supervisor's availability etc.).
+      SUPERVISORS = [];
+      loadFailed = true;
+    }
     if(par && par.parameters){
       // backend returns: orientations, populations, formats, areas (specialties removed from UI)
       // days/timeOfDay stay client-side
@@ -648,6 +656,17 @@ function render(){
     fc.textContent = totalActive; fc.style.display='inline-block';
     fcl.style.display='inline';
   } else { fc.style.display='none'; fcl.style.display='none'; }
+
+  if(loadFailed){
+    document.getElementById('countBadge').textContent = 'לא נטען';
+    grid.innerHTML = `<div class="empty" style="grid-column:1/-1">
+      <div class="em-icon">⚠</div>
+      <h3>רשימת המדריכים לא נטענה</h3>
+      <p>${apiFailureMessage()}</p>
+      <button class="chip" onclick="location.reload()">נסה שוב</button>
+    </div>`;
+    return;
+  }
 
   if(filtered.length === 0){
     grid.innerHTML = `<div class="empty" style="grid-column:1/-1">
