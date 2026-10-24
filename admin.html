@@ -107,6 +107,14 @@
   .willing-toggle.off{background:#f1f0ec;color:var(--muted);border-color:var(--border)}
   .willing-toggle:hover:not(:disabled){filter:brightness(.96)}
   .willing-toggle:disabled{opacity:.55;cursor:default}
+  .avail-btn{margin-top:4px;font-size:11.5px;padding:2px 8px;border-radius:999px;border:1.5px solid var(--border);background:white;color:var(--ink-soft);cursor:pointer;white-space:nowrap}
+  .avail-btn.empty{border-color:var(--warn);color:var(--warn)}
+  tr.avail-panel td{background:#f4f7f5;padding:10px 16px}
+  tr.avail-panel[hidden]{display:none}
+  .avail-grid{display:grid;grid-template-columns:auto repeat(6,34px);gap:4px;align-items:center;font-size:12px;margin-bottom:8px;width:max-content}
+  .avail-grid .dh{text-align:center;font-weight:600}
+  .avail-grid input{width:18px;height:18px;margin:auto;display:block}
+  .avail-actions{display:flex;gap:8px;align-items:center}
   .cap-note{font-size:11px;color:var(--warn)}
   .num-students{font-size:16px;font-weight:700;color:var(--ink)}
   .num-students.zero{color:var(--muted);font-weight:500}
@@ -802,12 +810,22 @@ function renderTable(supervisors){
     const spotCell = isConsult
       ? '<span class="badge" style="background:#ede9fe;color:#6d28d9">🩺 ייעוץ פסיכיאטרי</span>'
       : `<span class="badge ${s.hasSpot ? 'spot-yes' : 'spot-no'}">${s.hasSpot ? '✓ יש מקום' : (s.atCapacity ? '× מלא (קיבולת)' : '× אין מקום')}</span>`;
+    const AV = s.availability || {};
+    const availEmpty = !Object.keys(AV).length;
+    const availSummary = availEmpty ? 'זמינות לא הוגדרה'
+      : Object.keys(AV).map(d => d + '׳ ' + AV[d].join('/')).join(' · ');
+    const availPanel = (isConsult || !s.token) ? '' : `<tr class="avail-panel" hidden data-avail-panel="${esc(s.token)}"><td colspan="7">
+      <div class="avail-grid"><span></span>${['א','ב','ג','ד','ה','ו'].map(d => `<span class="dh">${d}</span>`).join('')}
+      ${['בוקר','צהריים','ערב'].map(sl => `<span>${sl}</span>` + ['א','ב','ג','ד','ה','ו'].map(d => `<input type="checkbox" data-day="${d}" data-slot="${sl}"${(AV[d] || []).includes(sl) ? ' checked' : ''}>`).join('')).join('')}
+      </div>
+      <div class="avail-actions"><button class="row-btn" data-avail-save data-token="${esc(s.token)}" data-name="${esc(s.fullName)}">שמור זמינות</button><span class="cap-state" data-avail-state></span></div>
+    </td></tr>`;
     return `<tr class="sup-row ${rowClass}">
       <td class="name-cell" data-label="מדריך">${esc(s.fullName)}<span class="credential">${esc(s.credential)}</span></td>
       <td data-label="תלמידים"><span class="num-students${s.studentsAccepted === 0 ? ' zero':''}">${isConsult ? '—' : s.studentsAccepted}</span></td>
       <td data-label="קיבולת">${isConsult || !s.token
         ? '<span style="color:#aaa">—</span>'
-        : `<div class="cap-cell"><input class="cap-input" type="number" min="0" max="30" step="1" placeholder="—" value="${s.maxStudents === '' || s.maxStudents == null ? '' : esc(s.maxStudents)}" data-cap-input data-token="${esc(s.token)}" data-name="${esc(s.fullName)}" title="כמה מודרכים המדריך יכול לקלוט השנה. ריק = בלי הגבלה."><span class="cap-state" data-cap-state></span></div>`}</td>
+        : `<div class="cap-cell"><input class="cap-input" type="number" min="0" max="30" step="1" placeholder="—" value="${s.maxStudents === '' || s.maxStudents == null ? '' : esc(s.maxStudents)}" data-cap-input data-token="${esc(s.token)}" data-name="${esc(s.fullName)}" title="כמה מודרכים המדריך יכול לקלוט השנה. ריק = בלי הגבלה."><span class="cap-state" data-cap-state></span></div><button class="avail-btn${availEmpty ? ' empty' : ''}" data-avail-open data-token="${esc(s.token)}" title="ימים ושעות שהמדריך פנוי להדרכה">🗓 ${esc(availSummary)}</button>`}</td>
       <td data-label="מקום פנוי">${isConsult || !s.token ? spotCell : `<div class="spot-cell">${spotCell}<button class="willing-toggle ${s.willing ? 'on' : 'off'}" data-willing-action data-token="${esc(s.token)}" data-name="${esc(s.fullName)}" data-willing="${s.willing ? 'true' : 'false'}" title="${s.willing ? 'המדריך מסומן כפתוח לקבלת מודרכים. לחיצה תסגור.' : 'המדריך מסומן כסגור לקבלה. לחיצה תפתח.'}">${s.willing ? '🟢 מתג פתוח' : '⚪ מתג סגור'}</button>${s.willing && s.atCapacity ? '<span class="cap-note">המתג פתוח אבל הקיבולת מלאה — התלמידים לא רואים.</span>' : ''}</div>`}</td>
       <td data-label="פרסום"><span class="badge ${s.published ? 'published' : 'unpublished'}">${s.published ? '● מפורסם' : '○ טיוטה'}</span></td>
       <td data-label="קשר"><div class="contact-mini">${s.email ? `<a href="mailto:${esc(s.email)}">${esc(s.email)}</a><br>`:''}${phoneStr ? `<a href="tel:${esc(phoneStr)}">${esc(phoneStr)}</a>`:''}</div></td>
@@ -817,7 +835,7 @@ function renderTable(supervisors){
         ${s.token ? `<button class="row-btn delete-btn" data-sup-action="delete" data-token="${esc(s.token)}" data-name="${esc(s.fullName)}">🗑 מחק</button>` : ''}
         ${!editLink && !s.token ? '—' : ''}
       </div></td>
-    </tr>`;
+    </tr>${availPanel}`;
   }
 
   let html = `<table>
@@ -966,6 +984,40 @@ function wireCapacityControls(c){
       mark(state, 'saved', '✓');
       // Crossing the capacity line moves the row between the "פנויים" and "מלאים"
       // groups, so the table has to be rebuilt, not just repainted in place.
+      loadStats();
+    });
+  });
+
+  c.querySelectorAll('button[data-avail-open]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const panel = c.querySelector(`tr[data-avail-panel="${cssEsc(btn.dataset.token)}"]`);
+      if(panel) panel.hidden = !panel.hidden;
+    });
+  });
+
+  c.querySelectorAll('button[data-avail-save]').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const name = btn.dataset.name || 'המדריך';
+      if(!LIVE){ showErr('מצב דמו — הפעולה לא נשמרת.'); return; }
+      const panel = btn.closest('tr');
+      const state = panel.querySelector('[data-avail-state]');
+      const grid = {};
+      panel.querySelectorAll('input[data-day]:checked').forEach(i => {
+        (grid[i.dataset.day] = grid[i.dataset.day] || []).push(i.dataset.slot);
+      });
+      btn.disabled = true;
+      mark(state, '', '…');
+      // Writes only the availability cell — never the full profile.
+      const r = await apiCall('setSupervisorCapacity', {
+        adminPin: pin(), token: btn.dataset.token, availability: JSON.stringify(grid)
+      });
+      btn.disabled = false;
+      if(!r || r.error){
+        mark(state, 'failed', '✕', actionErrorText(r, 'שמירה נכשלה: '));
+        showErr(actionErrorText(r, `עדכון הזמינות של ${name} נכשל: `));
+        return;
+      }
+      mark(state, 'saved', '✓ נשמר');
       loadStats();
     });
   });

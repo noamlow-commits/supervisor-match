@@ -507,7 +507,9 @@ function archiveSupervisor(p) {
  * Idempotent by construction: both values are absolute sets, never deltas. That is
  * why the client is allowed to retry it through Apps Script's flakiness.
  *
- * params: adminPin, token, [hasSpot: 'true'|'false'], [maxStudents: number | '']
+ * params: adminPin, token, [hasSpot: 'true'|'false'], [maxStudents: number | ''],
+ *         [availability: JSON string {"א":["בוקר","צהריים"],...}] — the weekly grid,
+ *         an absolute set like the other two (so it is safe to retry).
  */
 function setSupervisorCapacity(p) {
   requireAdminPin(p);
@@ -539,6 +541,24 @@ function setSupervisorCapacity(p) {
     }
   }
 
+  if (p.availability !== undefined) {
+    // Whitelist days and slots: this string lands in a cell that every student page
+    // parses, so anything outside the grid's vocabulary is dropped, not stored.
+    const DAYS = ['א', 'ב', 'ג', 'ד', 'ה', 'ו'];
+    const SLOTS = ['בוקר', 'צהריים', 'ערב'];
+    let parsed;
+    try { parsed = typeof p.availability === 'object' ? p.availability : JSON.parse(String(p.availability) || '{}'); }
+    catch (e) { return { error: 'bad_availability' }; }
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return { error: 'bad_availability' };
+    const clean = {};
+    DAYS.forEach(function (d) {
+      if (!Array.isArray(parsed[d])) return;
+      const keep = SLOTS.filter(function (sl) { return parsed[d].indexOf(sl) >= 0; });
+      if (keep.length) clean[d] = keep;
+    });
+    writes.availability = JSON.stringify(clean);
+  }
+
   if (!Object.keys(writes).length) return { error: 'nothing_to_update' };
 
   for (const k of Object.keys(writes)) {
@@ -566,7 +586,8 @@ function setSupervisorCapacity(p) {
     placedCount: placed,
     atCapacity: isAtCapacity(fresh, placed),
     // What a student would see right now — consultation cards are never a supervision spot.
-    hasSpot: isConsultation(fresh) ? false : effectiveHasSpot(fresh, placed)
+    hasSpot: isConsultation(fresh) ? false : effectiveHasSpot(fresh, placed),
+    availability: parseAvailability(fresh.availability)
   };
 }
 
@@ -673,6 +694,7 @@ function getAdminStats(p) {
       studentsAccepted: accepted,
       selfReportedAccepted: selfReported,
       maxStudents: (r.maxStudents === '' || r.maxStudents == null) ? '' : Number(r.maxStudents),
+      availability: parseAvailability(r.availability),
       email: r.email || '',
       phone: r.phone || ''
     };
