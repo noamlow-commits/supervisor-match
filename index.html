@@ -202,7 +202,7 @@
     border-inline-start:3px solid var(--accent);
   }
   .availability-grid{
-    display:grid;grid-template-columns:auto repeat(7,1fr);gap:3px;font-size:12px;
+    display:grid;grid-template-columns:auto repeat(6,minmax(0,1fr));gap:3px;font-size:12px;
     margin-top:6px;
   }
   .availability-grid .lbl{color:var(--muted);font-size:11px;padding:4px 0}
@@ -720,7 +720,10 @@ function openModal(s){
   const slots = PARAMS.timeOfDay;
 
   // Build availability grid
-  let availHTML = `<div class="availability-grid">
+  // The column count comes from the days actually drawn: the CSS used to hard-code 7 day
+  // columns while the markup has 6, so every row overflowed by one cell and each ✓ landed
+  // under the wrong day and slot.
+  let availHTML = `<div class="availability-grid" style="grid-template-columns:auto repeat(${days.length},minmax(0,1fr))">
     <div class="lbl"></div>
     ${days.map(d=>`<div class="day-h">${d}</div>`).join('')}`;
   slots.forEach(slot=>{
