@@ -250,6 +250,15 @@
   .students-toolbar button.secondary:hover{background:var(--accent);color:white}
   .bulk-paste{padding:14px 22px;border-bottom:1px solid var(--line);background:#fafaf7;display:none}
   .bulk-paste.show{display:block}
+  .add-sup-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px}
+  .add-sup-grid input{padding:8px 12px;border:1.5px solid var(--border);border-radius:8px;background:white;color:var(--ink);outline:none;font-size:14px;font-family:inherit;min-width:0}
+  .add-sup-grid input:focus{border-color:var(--accent)}
+  .add-sup-grid .wide{grid-column:1/-1}
+  @media(max-width:560px){.add-sup-grid{grid-template-columns:1fr}}
+  .add-sup-mail{display:flex;align-items:center;gap:8px;font-size:13.5px;margin-bottom:10px;cursor:pointer}
+  .add-sup-result{display:none;margin-top:12px;padding:12px 14px;border-radius:8px;background:#f0f9f4;border:1px solid #a7e3c4;color:#0f6e4a;font-size:13.5px;line-height:1.6}
+  .add-sup-result.show{display:block}
+  .add-sup-result a{color:inherit;font-weight:600}
   .bulk-paste textarea{width:100%;padding:10px 12px;border:1.5px solid var(--border);border-radius:8px;background:white;color:var(--ink);outline:none;font-size:14px;font-family:inherit;resize:vertical;min-height:90px}
   .bulk-paste textarea:focus{border-color:var(--accent)}
   .bulk-paste .hint{font-size:12.5px;color:var(--muted);margin:6px 0 10px}
@@ -372,6 +381,26 @@
       <h2>פירוט לפי מדריך</h2>
       <p class="desc">מחולק לקבוצות: פנויים לקבל / מלאים / טרם פרסמו. בכל קבוצה מסודר לפי מספר תלמידים. לחיצה על "ערוך" פותחת את פרופיל המדריך בלשונית חדשה.</p>
       <p class="desc"><b>הקיבולת והמתג ניתנים לעריכה כאן</b> — למדריכים שלא נכנסים לכרטיס שלהם. השינוי נשמר מיד ומחליף את מה שהמדריך הגדיר. התווית (״יש מקום״ / ״אין מקום״) היא מה שהתלמידים רואים, והיא נגזרת משניהם: מתג פתוח <b>וגם</b> מתחת לקיבולת.</p>
+    </div>
+    <div class="students-toolbar">
+      <button id="toggleAddSupBtn">+ הוסף מדריך</button>
+      <span class="hint" style="font-size:12.5px;color:var(--muted)">למדריך שמסר פרטים בוואטסאפ או במייל ולא נרשם בעצמו</span>
+    </div>
+    <div class="bulk-paste" id="addSupPanel">
+      <p class="hint">הכרטיס נוצר <b>כטיוטה</b> — התלמידים לא רואים אותו עד שהוא מתפרסם. את שאר הפרופיל (סגנון, סוגי טיפול, זמינות) ממלא המדריך מהקישור האישי שלו, או את/ה דרך ״✎ ערוך״ בטבלה.</p>
+      <div class="add-sup-grid">
+        <input type="text" id="newSupName" placeholder="שם מלא (חובה)">
+        <input type="email" id="newSupEmail" placeholder="מייל (חובה)" dir="ltr">
+        <input type="tel" id="newSupPhone" placeholder="טלפון (לא חובה)" dir="ltr">
+        <input type="number" id="newSupMax" min="0" placeholder="כמה תלמידים (לא חובה)">
+        <input type="text" id="newSupCredential" class="wide" placeholder="שורת תואר / הכשרה, למשל: פסיכותרפיסט CBT, בוגר המכון">
+      </div>
+      <label class="add-sup-mail"><input type="checkbox" id="newSupSendMail" checked> לשלוח למדריך מייל עם הקישור האישי למילוי הכרטיס</label>
+      <div class="actions">
+        <button class="primary" id="addSupSubmitBtn">צור כרטיס</button>
+        <button class="cancel" id="addSupCancelBtn">בטל</button>
+      </div>
+      <div class="add-sup-result" id="addSupResult"></div>
     </div>
     <div id="tableContainer"></div>
   </div>
@@ -1183,6 +1212,53 @@ document.getElementById('bulkSubmitBtn').addEventListener('click', bulkAddStuden
 document.getElementById('bulkCancelBtn').addEventListener('click', () => {
   document.getElementById('bulkText').value = '';
   document.getElementById('bulkPaste').classList.remove('show');
+});
+
+/* ===== Add a supervisor ===== */
+// עד עכשיו מדריך שמסר פרטים בוואטסאפ נכנס רק דרך סקריפט חד-פעמי שהריץ מפתח.
+// הכרטיס נוצר כטיוטה; addSupervisor אינו ברשימת הניסיונות החוזרים כי הוא מוסיף שורה.
+async function addSupervisorAction(){
+  const val = id => document.getElementById(id).value.trim();
+  const fullName = val('newSupName'), email = val('newSupEmail');
+  if(!fullName){ document.getElementById('newSupName').focus(); return; }
+  if(!email){ document.getElementById('newSupEmail').focus(); return; }
+  const sendMail = document.getElementById('newSupSendMail').checked;
+  const btn = document.getElementById('addSupSubmitBtn');
+  const out = document.getElementById('addSupResult');
+  out.classList.remove('show');
+  btn.disabled = true; btn.textContent = 'יוצר...';
+  let r;
+  if(!LIVE){
+    r = {ok:true, personalUrl:'supervisor.html?token=demo', mailRequested:sendMail, mailed:sendMail};
+  } else {
+    r = await apiCall('addSupervisor', {
+      adminPin: sessionStorage.getItem('admin-pin') || '',
+      fullName, email, phone: val('newSupPhone'), maxStudents: val('newSupMax'),
+      credential: val('newSupCredential'), sendMail: sendMail ? 'true' : 'false'
+    });
+  }
+  btn.disabled = false; btn.textContent = 'צור כרטיס';
+  if(!r || r.error){
+    showErr(actionErrorText(r, 'יצירת הכרטיס נכשלה: '));
+    return;
+  }
+  const mailLine = !r.mailRequested ? 'לא נשלח מייל — אפשר להעביר למדריך את הקישור למטה.'
+    : (r.mailed ? `נשלח מייל ל-${esc(email)} עם הקישור האישי.` : '⚠ שליחת המייל נכשלה — העבירי למדריך את הקישור למטה.');
+  out.innerHTML = `✓ נוצר כרטיס טיוטה ל<b>${esc(fullName)}</b>. ${mailLine}<br>
+    קישור אישי לעריכה (משמש כסיסמה — רק למדריך עצמו): <a href="${esc(r.personalUrl)}" target="_blank" rel="noopener">פתח את הכרטיס</a>`;
+  out.classList.add('show');
+  ['newSupName','newSupEmail','newSupPhone','newSupMax','newSupCredential'].forEach(id => document.getElementById(id).value = '');
+  loadStats();
+}
+document.getElementById('toggleAddSupBtn').addEventListener('click', () => {
+  const el = document.getElementById('addSupPanel');
+  el.classList.toggle('show');
+  if(el.classList.contains('show')) document.getElementById('newSupName').focus();
+});
+document.getElementById('addSupSubmitBtn').addEventListener('click', addSupervisorAction);
+document.getElementById('addSupCancelBtn').addEventListener('click', () => {
+  document.getElementById('addSupPanel').classList.remove('show');
+  document.getElementById('addSupResult').classList.remove('show');
 });
 
 /* ===== Buttons & init ===== */
