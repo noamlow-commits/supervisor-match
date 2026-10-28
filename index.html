@@ -123,6 +123,13 @@
   }
   .card:hover{transform:translateY(-2px);box-shadow:0 4px 18px rgba(15,23,42,.08)}
   .card.full{opacity:.62}
+  .card.locked{cursor:not-allowed;background:#f1f1ef;opacity:.78;box-shadow:none}
+  .card.locked h2{color:var(--ink-soft)}
+  .card.locked .tags{filter:grayscale(1)}
+  .card.locked:hover{transform:none;box-shadow:none}
+  .full-section-head{margin-top:18px;padding-top:16px;border-top:1px dashed var(--border, #d6d3d1)}
+  .full-section-head h3{margin:0 0 4px;font-size:15px;font-weight:600;color:var(--ink-soft, #44403c)}
+  .full-section-head p{margin:0;font-size:13px;color:var(--muted)}
   .card.consult{border-color:#c4b5fd;background:linear-gradient(180deg,#faf5ff 0%,var(--surface) 60%)}
   .card-head{display:flex;align-items:flex-start;gap:10px;margin-bottom:10px}
   .card-head .name{flex:1;min-width:0}
@@ -638,16 +645,22 @@ function matchesFilters(s){
 }
 
 // מיכל (2026-07): תלמידים שמחפשים מדריך לא רואים מדריכים תפוסים (יוצר תסכול).
-// מסתירים מהדירקטוריון מדריך שאין לו מקום פנוי. כרטיסי ייעוץ פסיכיאטרי (consultation)
-// מוצגים תמיד — אין להם מושג של "מקום הדרכה", והם זמינים לפנייה בכל עת.
+// טל (28.10.26): כשמוצגים רק 4 פנויים, תלמיד חושב שזה כל המאגר. לכן המדריכים
+// המלאים חוזרים — אבל באזור נפרד בתחתית, באפור ובלי אפשרות לפתוח או לפנות,
+// כך שהחיפוש עצמו עדיין מתנהל רק בין הפנויים. כרטיסי ייעוץ פסיכיאטרי (consultation)
+// מוצגים תמיד עם הפנויים — אין להם מושג של "מקום הדרכה".
 function visibleToStudents(s){ return s.cardType === 'consultation' || s.hasSpot; }
+function isFullSupervisor(s){ return s.cardType !== 'consultation' && !s.hasSpot; }
 
 function render(){
   const filtered = SUPERVISORS.filter(s => visibleToStudents(s) && matchesFilters(s));
+  const fullOnes = SUPERVISORS.filter(s => isFullSupervisor(s) && matchesFilters(s));
   const grid = document.getElementById('grid');
-  const _n = filtered.length;
+  // ייעוץ פסיכיאטרי אינו 'מקום הדרכה פנוי' — הוא מוצג אך אינו נספר כאן.
+  const _n = filtered.filter(s => s.hasSpot).length;
   document.getElementById('countBadge').textContent =
-    _n === 0 ? 'אין מדריכים' : (_n === 1 ? 'מדריך אחד' : `${_n} מדריכים`);
+    (_n === 0 ? 'אין מדריכים פנויים' : (_n === 1 ? 'מדריך פנוי אחד' : `${_n} מדריכים פנויים`)) +
+    (fullOnes.length ? ` · ${fullOnes.length} מלאים` : '');
 
   const totalActive = Object.values(activeFilters).reduce((sum,s)=>sum+s.size,0);
   const fc = document.getElementById('filterCount');
@@ -668,7 +681,7 @@ function render(){
     return;
   }
 
-  if(filtered.length === 0){
+  if(filtered.length === 0 && fullOnes.length === 0){
     grid.innerHTML = `<div class="empty" style="grid-column:1/-1">
       <div class="em-icon">⚲</div>
       <h3>לא נמצאו מדריכים מתאימים</h3>
@@ -678,6 +691,13 @@ function render(){
   }
 
   grid.innerHTML = '';
+  if(filtered.length === 0){
+    grid.insertAdjacentHTML('beforeend', `<div class="empty" style="grid-column:1/-1">
+      <div class="em-icon">⚲</div>
+      <h3>אין כרגע מדריך פנוי שמתאים לסינון</h3>
+      <p>נסה לבטל חלק מהסינון</p>
+    </div>`);
+  }
   filtered.forEach(s=>{
     const isConsult = s.cardType === 'consultation';
     const card = document.createElement('div');
@@ -711,6 +731,35 @@ function render(){
     card.addEventListener('click', ()=>openModal(s));
     grid.appendChild(card);
   });
+
+  if(fullOnes.length){
+    grid.insertAdjacentHTML('beforeend', `<div class="full-section-head" style="grid-column:1/-1">
+      <h3>מדריכים שהקיבולת שלהם מלאה כרגע</h3>
+      <p>הם אינם מקבלים כרגע תלמידים חדשים, ולכן אי אפשר לפנות אליהם מכאן. הם מוצגים כדי שתכירו את המאגר כולו — ייתכן שיתפנה אצלם מקום בהמשך.</p>
+    </div>`);
+    fullOnes.forEach(s=>{
+      const card = document.createElement('div');
+      card.className = 'card full locked';
+      card.setAttribute('aria-disabled', 'true');
+      card.title = 'הקיבולת מלאה כרגע';
+      card.innerHTML = `
+        <div class="card-head">
+          <div class="name">
+            <h2>${s.fullName}</h2>
+            <p class="credential">${s.credential || ''}</p>
+          </div>
+          <span class="pill full">מלא כרגע</span>
+        </div>
+        <div class="card-meta">
+          <span>${s.format}${s.area ? ' · ' + s.area : ''}</span>
+        </div>
+        <div class="tags">
+          ${s.orientations.slice(0,3).map(o=>`<span class="tag">${o}</span>`).join('')}
+          ${s.populations.slice(0,2).map(p=>`<span class="tag pop">${p}</span>`).join('')}
+        </div>`;
+      grid.appendChild(card);
+    });
+  }
 }
 
 /* ===== Modal ===== */

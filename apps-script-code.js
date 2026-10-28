@@ -20,6 +20,7 @@
  *   ?action=getSupervisor&token=XXX           → for editing (published or not)
  *   ?action=saveSupervisor&token=XXX&data=URLENCODED_JSON
  *   ?action=getParameters&pin=XXXX
+ *   ?action=addSupervisor&adminPin=...&fullName=...&email=...  → new DRAFT card (admin)
  */
 
 const TAB_SUPERVISORS = 'Supervisors';
@@ -101,6 +102,7 @@ function handleRequest(e) {
       case 'getAdminStats':          result = getAdminStats(params); break;
       case 'archiveSupervisor':      result = archiveSupervisor(params); break;
       case 'setSupervisorCapacity':  result = setSupervisorCapacity(params); break;
+      case 'addSupervisor':          result = addSupervisor(params); break;
       case 'deleteSupervisor':       result = deleteSupervisor(params); break;
       case 'getStudents':            result = getStudents(params); break;
       case 'addStudent':             result = addStudent(params); break;
@@ -253,8 +255,10 @@ function sendRegistrationEmail(toEmail, name, personalUrl) {
         '<p>בהצלחה,<br>צוות בית הספר</p>' +
         '</div>'
     });
+    return true;
   } catch (e) {
     // email is best-effort; don't fail registration if mail fails
+    return false;
   }
 }
 
@@ -440,6 +444,86 @@ function saveSupervisor(p) {
   }
 
   return { ok: true };
+}
+
+/* ========== Add a supervisor from the dashboard (admin) ========== */
+
+/**
+ * Creates a new supervisor card on the secretary's behalf. Until now the only way in
+ * was register.html + the registration code, so a supervisor who sent their details by
+ * WhatsApp or mail needed a developer-run one-off script (סלעית, כהנא). This is that
+ * script as a button.
+ *
+ * The card is created as a DRAFT (published=false): it has a name, an email and a line
+ * of credentials, not a profile, and a thin card in the student directory helps nobody.
+ * The supervisor completes it from their personal link and publishes — or the secretary
+ * does it for them through ✎ ערוך.
+ *
+ * NOT retryable: it appends a row. The duplicate guard (same email, or same name) is a
+ * second line of defence, not a licence to retry.
+ *
+ * params: adminPin, fullName, email, [credential], [phone], [maxStudents],
+ *         [sendMail: 'true'|'false'] — mail the supervisor their personal edit link.
+ */
+function addSupervisor(p) {
+  requireAdminPin(p);
+  ensureMailedColumn();
+  ensureMaxStudentsColumn();
+
+  const fullName = String(p.fullName || '').trim();
+  const email = String(p.email || '').trim().toLowerCase();
+  if (!fullName) return { error: 'missing_name', message: 'חסר שם מלא' };
+  if (!email) return { error: 'missing_email', message: 'חסר מייל — בלעדיו אין לאן לשלוח למדריך את הקישור האישי' };
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return { error: 'bad_email', message: 'כתובת המייל לא תקינה: ' + email };
+
+  let maxStudents = '';
+  const rawMax = String(p.maxStudents == null ? '' : p.maxStudents).trim();
+  if (rawMax !== '') {
+    const n = Number(rawMax);
+    if (isNaN(n)) return { error: 'bad_max_students', message: 'קיבולת חייבת להיות מספר' };
+    maxStudents = Math.max(0, Math.floor(n));
+  }
+
+  // Duplicate guard — archived rows included, since restoring is better than a twin.
+  const norm = s => String(s || '').trim().toLowerCase().replace(/["׳״']/g, '');
+  const existing = readSupervisorRows().find(r =>
+    norm(r.email) === email || (norm(r.fullName) && norm(r.fullName) === norm(fullName)));
+  if (existing) {
+    return {
+      error: 'already_exists',
+      message: 'כבר יש כרטיס עבור ' + existing.fullName + ' (' + existing.email + ')' +
+        (isArchived(existing) ? ' — הוא בארכיון, אפשר לשחזר אותו מהטבלה' : '') + '. לא נוצר כרטיס כפול.'
+    };
+  }
+
+  const sendMail = String(p.sendMail) === 'true';
+  const token = generateToken();
+  const now = new Date().toISOString();
+  const phone = String(p.phone || '').trim();
+  const sheet = getOrCreateSupervisorsSheet();
+  // Built from the LIVE header row, never from SUPERVISOR_COLS: a column added later sits
+  // at the sheet's far right, and schema order would shift every value one cell over.
+  const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+  const values = {
+    token: token, created: now, updated: now, published: false,
+    fullName: fullName, credential: String(p.credential || '').trim(),
+    availability: '{}', hasSpot: true, phone: phone, whatsappEnabled: false,
+    email: email, studentsAccepted: 0, mailed: sendMail, maxStudents: maxStudents
+  };
+  sheet.appendRow(headers.map(h => (values[h] !== undefined ? values[h] : '')));
+
+  // Sheets turns 0501234567 into a number and drops the zero — rewrite as text.
+  const phoneCol = headers.indexOf('phone');
+  if (phoneCol >= 0 && phone) {
+    sheet.getRange(sheet.getLastRow(), phoneCol + 1).setNumberFormat('@').setValue(phone);
+  }
+
+  const baseUrl = getSetting('appBaseUrl') || 'https://noamlow-commits.github.io/supervisor-match/';
+  const personalUrl = baseUrl + 'supervisor.html?token=' + token;
+  let mailed = false;
+  if (sendMail) mailed = sendRegistrationEmail(email, fullName, personalUrl);
+
+  return { ok: true, token: token, personalUrl: personalUrl, mailRequested: sendMail, mailed: mailed };
 }
 
 /* ========== Remove a supervisor — archive (reversible) or delete (permanent) ========== */
