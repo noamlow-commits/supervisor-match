@@ -212,6 +212,10 @@
   .archive-btn{background:#f1f2f6;color:#4a4f5e;border-color:#dcdfe8}
   .archive-btn:hover:not(:disabled){background:#e3e5ec;color:#2f3444}
   /* Delete stays quiet until you reach for it — it should not read as a primary action. */
+  .pub-btn.on{background:var(--available-bg);color:var(--available);border-color:#a7e3c4}
+  .pub-btn.on:hover:not(:disabled){filter:brightness(.95)}
+  .pub-btn.off{background:transparent;color:#a1a1aa;border-color:#e4e4e7;font-weight:500;padding:3px 8px;font-size:11px}
+  .pub-btn.off:hover:not(:disabled){color:var(--ink-soft);border-color:var(--border)}
   .delete-btn{background:transparent;color:#a1a1aa;border-color:#e4e4e7}
   .delete-btn:hover:not(:disabled){background:#fef2f2;color:#b91c1c;border-color:#fca5a5}
 
@@ -861,7 +865,9 @@ function renderTable(supervisors){
         ? '<span style="color:#aaa">—</span>'
         : `<div class="cap-cell"><input class="cap-input" type="number" min="0" max="30" step="1" placeholder="—" value="${s.maxStudents === '' || s.maxStudents == null ? '' : esc(s.maxStudents)}" data-cap-input data-token="${esc(s.token)}" data-name="${esc(s.fullName)}" title="כמה מודרכים המדריך יכול לקלוט השנה. ריק = בלי הגבלה."><span class="cap-state" data-cap-state></span></div><button class="avail-btn${availEmpty ? ' empty' : ''}" data-avail-open data-token="${esc(s.token)}" title="ימים ושעות שהמדריך פנוי להדרכה">🗓 ${esc(availSummary)}</button>`}</td>
       <td data-label="מקום פנוי">${isConsult || !s.token ? spotCell : `<div class="spot-cell">${spotCell}<button class="willing-toggle ${s.willing ? 'on' : 'off'}" data-willing-action data-token="${esc(s.token)}" data-name="${esc(s.fullName)}" data-willing="${s.willing ? 'true' : 'false'}" title="${s.willing ? 'המדריך מסומן כפתוח לקבלת מודרכים. לחיצה תסגור.' : 'המדריך מסומן כסגור לקבלה. לחיצה תפתח.'}">${s.willing ? '🟢 מתג פתוח' : '⚪ מתג סגור'}</button>${s.willing && s.atCapacity ? '<span class="cap-note">המתג פתוח אבל הקיבולת מלאה — התלמידים לא רואים.</span>' : ''}</div>`}</td>
-      <td data-label="פרסום"><span class="badge ${s.published ? 'published' : 'unpublished'}">${s.published ? '● מפורסם' : '○ טיוטה'}</span></td>
+      <td data-label="פרסום"><div class="spot-cell"><span class="badge ${s.published ? 'published' : 'unpublished'}">${s.published ? '● מפורסם' : '○ טיוטה'}</span>${!s.token || s.archived ? '' : s.published
+        ? `<button class="row-btn pub-btn off" data-publish-action data-token="${esc(s.token)}" data-name="${esc(s.fullName)}" data-published="true" title="מחזיר את הכרטיס לטיוטה — התלמידים לא יראו אותו">החזר לטיוטה</button>`
+        : `<button class="row-btn pub-btn on" data-publish-action data-token="${esc(s.token)}" data-name="${esc(s.fullName)}" data-published="false" title="מפרסם את הכרטיס לתלמידים כמו שהוא עכשיו, בלי לחכות שהמדריך ימלא אותו">📢 פרסם עכשיו</button>`}</div></td>
       <td data-label="קשר"><div class="contact-mini">${s.email ? `<a href="mailto:${esc(s.email)}">${esc(s.email)}</a><br>`:''}${phoneStr ? `<a href="tel:${esc(phoneStr)}">${esc(phoneStr)}</a>`:''}</div></td>
       <td data-label="פעולה"><div class="row-actions">
         ${editLink ? `<a class="edit-btn" href="${editLink}" target="_blank" rel="noopener">✎ ערוך</a>` : ''}
@@ -901,7 +907,7 @@ function renderTable(supervisors){
     isFirst = false;
   }
   if(drafts.length > 0){
-    html += `<tr class="sup-section-header draft-header${isFirst ? ' first':''}"><td colspan="7">○ טרם פרסמו פרופיל <span class="count">(${drafts.length})</span> <span style="font-weight:400;font-size:12px">· לפרסום בלי לחכות למדריך: ״✎ ערוך״ ← ״פרסם״</span></td></tr>`;
+    html += `<tr class="sup-section-header draft-header${isFirst ? ' first':''}"><td colspan="7">○ טרם פרסמו פרופיל <span class="count">(${drafts.length})</span> <span style="font-weight:400;font-size:12px">· ״📢 פרסם עכשיו״ מפרסם בלי לחכות למדריך</span></td></tr>`;
     drafts.forEach(s => { html += renderRow(s, 'draft'); });
     isFirst = false;
   }
@@ -1052,6 +1058,29 @@ function wireCapacityControls(c){
         return;
       }
       mark(state, 'saved', '✓ נשמר');
+      loadStats();
+    });
+  });
+
+  c.querySelectorAll('button[data-publish-action]').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const name = btn.dataset.name || 'המדריך';
+      const want = btn.dataset.published !== 'true';   // flip
+      if(!LIVE){ showErr('מצב דמו — הפעולה לא נשמרת.'); return; }
+      if(!want && !confirm(`להחזיר את הכרטיס של ${name} לטיוטה? התלמידים לא יראו אותו עד שיפורסם שוב.`)) return;
+
+      btn.disabled = true;
+      const prev = btn.textContent;
+      btn.textContent = '…';
+      const r = await apiCall('setSupervisorPublished', {
+        adminPin: pin(), token: btn.dataset.token, published: want ? 'true' : 'false'
+      });
+      if(!r || r.error){
+        btn.disabled = false;
+        btn.textContent = prev;
+        showErr(actionErrorText(r, `שינוי הפרסום של ${name} נכשל: `));
+        return;
+      }
       loadStats();
     });
   });

@@ -21,6 +21,7 @@
  *   ?action=saveSupervisor&token=XXX&data=URLENCODED_JSON
  *   ?action=getParameters&pin=XXXX
  *   ?action=addSupervisor&adminPin=...&fullName=...&email=...  → new DRAFT card (admin)
+ *   ?action=setSupervisorPublished&adminPin=...&token=...&published=true|false  → publish a draft (admin)
  */
 
 const TAB_SUPERVISORS = 'Supervisors';
@@ -103,6 +104,7 @@ function handleRequest(e) {
       case 'archiveSupervisor':      result = archiveSupervisor(params); break;
       case 'setSupervisorCapacity':  result = setSupervisorCapacity(params); break;
       case 'addSupervisor':          result = addSupervisor(params); break;
+      case 'setSupervisorPublished': result = setSupervisorPublished(params); break;
       case 'deleteSupervisor':       result = deleteSupervisor(params); break;
       case 'getStudents':            result = getStudents(params); break;
       case 'addStudent':             result = addStudent(params); break;
@@ -575,6 +577,37 @@ function archiveSupervisor(p) {
     fullName: String(hit.row[hit.headers.indexOf('fullName')] || '')
   };
 }
+/**
+ * Publish / unpublish from the dashboard. The secretary often wants a card live
+ * before the supervisor ever opens it (a name, a credential line and a capacity are
+ * enough for a student to make contact). The only route used to be the supervisor's
+ * own full-profile editor, which writes EVERY field on save; this writes one cell.
+ * params: adminPin, token, published ('true' | 'false')
+ */
+function setSupervisorPublished(p) {
+  requireAdminPin(p);
+
+  const token = String(p.token || '').trim();
+  if (!token) return { error: 'missing_token' };
+
+  const hit = findSupervisorRowByToken_(token);
+  if (!hit) return { error: 'not_found' };
+
+  const want = String(p.published) === 'true';
+  const col = hit.headers.indexOf('published');
+  if (col < 0) return { error: 'missing_column', column: 'published' };
+
+  hit.sheet.getRange(hit.rowNum, col + 1).setValue(want);
+  const updatedCol = hit.headers.indexOf('updated');
+  if (updatedCol >= 0) hit.sheet.getRange(hit.rowNum, updatedCol + 1).setValue(new Date().toISOString());
+
+  return {
+    ok: true,
+    published: want,
+    fullName: String(hit.row[hit.headers.indexOf('fullName')] || '')
+  };
+}
+
 /**
  * Admin-side control over a supervisor's availability — the same two settings the
  * supervisor sets for themselves (the "יש לי מקום פנוי" toggle and the capacity
