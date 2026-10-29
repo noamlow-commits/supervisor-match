@@ -179,6 +179,11 @@
   .cohort-select{font-size:12px;padding:3px 6px;border-radius:6px;border:1px solid var(--border);
     background:var(--surface);color:var(--ink-soft);margin-top:4px;max-width:110px}
   .contact-mini{font-size:12px;color:var(--muted);direction:ltr;text-align:right}
+  /* הטבלה רחבה ממסך לפטופ רגיל, וה-overflow:hidden של הכרטיס חתך את העמודות
+     השמאליות (קשר + ✎ ערוך) בלי שום סימן — כך שלא היה איך לפרסם טיוטה.
+     מיילים ארוכים נשברים, ומה שעדיין לא נכנס נגלל אופקית במקום להיחתך. */
+  .contact-mini{overflow-wrap:anywhere;min-width:120px}
+  #tableContainer,#studentsTableContainer{overflow-x:auto}
   .contact-mini a{color:var(--accent);text-decoration:none}
   .contact-mini a:hover{text-decoration:underline}
   .edit-btn{
@@ -896,7 +901,7 @@ function renderTable(supervisors){
     isFirst = false;
   }
   if(drafts.length > 0){
-    html += `<tr class="sup-section-header draft-header${isFirst ? ' first':''}"><td colspan="7">○ טרם פרסמו פרופיל <span class="count">(${drafts.length})</span></td></tr>`;
+    html += `<tr class="sup-section-header draft-header${isFirst ? ' first':''}"><td colspan="7">○ טרם פרסמו פרופיל <span class="count">(${drafts.length})</span> <span style="font-weight:400;font-size:12px">· לפרסום בלי לחכות למדריך: ״✎ ערוך״ ← ״פרסם״</span></td></tr>`;
     drafts.forEach(s => { html += renderRow(s, 'draft'); });
     isFirst = false;
   }
